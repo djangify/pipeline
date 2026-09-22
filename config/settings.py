@@ -1,8 +1,34 @@
+import os
+import sys
 from pathlib import Path
 
 import environ
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Where user data (database, uploaded files) is stored. When running as a
+# packaged desktop app (PyInstaller .exe), the program files live in a
+# temporary, read-only folder, so user data must be written to a persistent,
+# writable location instead. A normal dev run keeps using the project's own
+# "data" folder exactly as before.
+if os.environ.get("PIPELINE_DATA_DIR"):
+    # Explicit override, e.g. for running from source against the same data
+    # folder a packaged build uses.
+    DATA_DIR = Path(os.environ["PIPELINE_DATA_DIR"])
+elif getattr(sys, "frozen", False):
+    DATA_DIR = (
+        Path(
+            os.environ.get("LOCALAPPDATA")
+            or os.environ.get("APPDATA")
+            or Path.home()
+        )
+        / "Pipeline"
+    )
+else:
+    DATA_DIR = BASE_DIR / "data"
+
+(DATA_DIR / "db").mkdir(parents=True, exist_ok=True)
+(DATA_DIR / "media").mkdir(parents=True, exist_ok=True)
 
 env = environ.Env(DEBUG=(bool, False))
 environ.Env.read_env(BASE_DIR / ".env")
@@ -12,6 +38,7 @@ DEBUG = env.bool("DEBUG", default=True)
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["127.0.0.1", "localhost"])
 
 INSTALLED_APPS = [
+    "adminita",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -56,7 +83,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "NAME": DATA_DIR / "db" / "db.sqlite3",
     }
 }
 
@@ -75,8 +102,15 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+# Desktop (PyWebView) mode: let WhiteNoise serve admin/DRF's static files
+# straight from the installed packages via the staticfiles finders, so the
+# packaged app works without having run collectstatic.
+if os.environ.get("PIPELINE_DESKTOP") == "1":
+    WHITENOISE_USE_FINDERS = True
+    WHITENOISE_AUTOREFRESH = True
+
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = DATA_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

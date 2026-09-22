@@ -1,6 +1,11 @@
+adminita==0.1.12
 Django==5.2.9
 django-environ
 djangorestframework
 whitenoise
 pillow
 gunicorn
+
+# Desktop app (native window + local production server for the bundled .exe)
+waitress
+pywebview
