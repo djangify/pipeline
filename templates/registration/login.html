@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}Log in - Pipeline{% endblock %}
+
+{% block content %}
+<div class="max-w-sm mx-auto mt-24 bg-white shadow-md rounded-lg p-8">
+    <h1 class="text-2xl font-bold text-gray-800 mb-6">Pipeline</h1>
+    <form method="post">
+        {% csrf_token %}
+        {% if form.errors %}
+        <p class="text-red-500 text-sm mb-4">Your username and password didn't match.</p>
+        {% endif %}
+        <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700">Username</label>
+            <input type="text" name="username" autofocus class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+        </div>
+        <div class="mb-6">
+            <label class="block text-sm font-medium text-gray-700">Password</label>
+            <input type="password" name="password" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+        </div>
+        <input type="hidden" name="next" value="{{ next }}">
+        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">Log in</button>
+    </form>
+</div>
+{% endblock %}
