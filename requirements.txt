@@ -9,3 +9,10 @@ gunicorn
 # Desktop app (native window + local production server for the bundled .exe)
 waitress
 pywebview
+
+# MCP sidecar (Pipeline-mcp.exe / manage.py runmcp) so Claude Desktop can read
+# and add contacts. Same pin as Lead Generation Studio.
+mcp<2
+# Pulled in transitively by mcp on Windows; pinned as a direct dependency so
+# the PyInstaller build always has the win32 shims it expects.
+pywin32; sys_platform == "win32"

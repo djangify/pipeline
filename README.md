@@ -27,6 +27,29 @@ gives that CRM its own home instead of bolting it back on.
 - A small REST API (Django REST Framework) at `/api/contacts/` and
   `/api/interactions/`, for future automation.
 
+## Claude Desktop connector (MCP)
+
+`mcp_server/` exposes Pipeline to Claude Desktop over stdio, same architecture
+as Lead Generation Studio's connector. Tools: `list_contacts`, `find_contact`
+(dedup lookup by name / website / email / handle), `get_contact`,
+`create_contact` (refuses exact duplicates), `update_contact`,
+`list_followups_due`, and `list/get/create/update_search_profile`.
+
+A **SearchProfile** (one per business, edit in the admin or via Claude) holds
+who to look for and comma-separated signal phrases, including complaint/intent
+phrases for Reddit-style searches ("sick of paying fees", "alternative to X").
+The server instructions tell Claude to read the profile first, search only
+public pages (never log into or automate LinkedIn/Facebook), check for
+duplicates, then add candidates as `status=new`, tagged `ai-sourced`, with notes
+saying why they fit. Outreach is left to you.
+
+- **Packaged:** launching `Pipeline.exe` registers `Pipeline-mcp.exe` (built
+  alongside it) in Claude Desktop's config as `pipeline`. Restart Claude
+  Desktop once afterwards. Outcome is recorded in
+  `%LOCALAPPDATA%\Pipeline\claude_connect_state.json` / `claude_connect.log`.
+- **From source:** `python manage.py runmcp` (or `python mcp_launcher.py`)
+  runs the server against the dev database in `data/`.
+
 ## Running it
 
 ```bash

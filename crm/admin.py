@@ -1,7 +1,7 @@
 # crm/admin.py
 from django.contrib import admin
 
-from .models import Contact, FollowUpTemplate, Interaction
+from .models import Contact, FollowUpTemplate, Interaction, SearchProfile
 
 
 class InteractionInline(admin.TabularInline):
@@ -54,3 +54,9 @@ class InteractionAdmin(admin.ModelAdmin):
     list_filter = ("direction", "channel", "date")
     search_fields = ("contact__name", "message")
     date_hierarchy = "date"
+
+
+@admin.register(SearchProfile)
+class SearchProfileAdmin(admin.ModelAdmin):
+    list_display = ("business", "website", "updated_at")
+    search_fields = ("audience_description", "keywords")

@@ -65,6 +65,58 @@ def _resource_path(rel: str) -> str:
     return str(Path(base) / rel)
 
 
+def _append_log(data_dir: Path, filename: str, message: str) -> None:
+    """Append one timestamped line to a small log in the data folder, so
+    startup problems are visible in the windowed build (console=False, so
+    print() goes nowhere). Best-effort -- never raises."""
+    try:
+        import datetime
+
+        data_dir.mkdir(parents=True, exist_ok=True)
+        line = f"{datetime.datetime.now().isoformat(timespec='seconds')}  {message}\n"
+        with open(data_dir / filename, "a", encoding="utf-8") as fh:
+            fh.write(line)
+    except Exception:
+        pass
+
+
+def _connect_claude_once(data_dir: Path) -> str:
+    """One reconcile attempt against Claude Desktop's config: adds or repoints
+    the "pipeline" mcpServers entry and records the outcome in
+    claude_connect_state.json. Returns the status string. Never raises."""
+    try:
+        from mcp_server.desktop_connect import connect_and_record
+
+        frozen = getattr(sys, "frozen", False)
+        base_dir = Path(__file__).resolve().parent
+        return connect_and_record(data_dir, base_dir, frozen)
+    except Exception as exc:
+        return f"error: {type(exc).__name__}: {exc}"
+
+
+def _start_claude_connect_watch(data_dir: Path) -> None:
+    """Register this install as an MCP server in Claude Desktop now, and if
+    Claude isn't visible yet, keep retrying in the background so installing or
+    opening Claude *after* this app still connects with no relaunch. The
+    reconcile is idempotent, so retrying is safe. Daemon thread -- never blocks
+    or crashes startup. Logs to claude_connect.log only when the status
+    changes."""
+
+    def _watch() -> None:
+        fast_deadline = time.time() + 300  # 5 min at 5s, then back off to 60s
+        last_logged = None
+        while True:
+            status = _connect_claude_once(data_dir)
+            if status != last_logged:
+                _append_log(data_dir, "claude_connect.log", f"connect() -> {status}")
+                last_logged = status
+            if not status.startswith("no-claude"):
+                return  # connected/updated/unchanged, or a hard error -- done.
+            time.sleep(5 if time.time() < fast_deadline else 60)
+
+    threading.Thread(target=_watch, daemon=True).start()
+
+
 def _find_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
@@ -113,6 +165,11 @@ def main() -> None:
         call_command("create_default_user", verbosity=0)
     except Exception as exc:  # pragma: no cover
         print(f"Could not create the default user: {exc}")
+
+    # Register this install as an MCP server so Claude Desktop can read and
+    # add contacts (see mcp_server/). Reconciles immediately and keeps retrying
+    # in the background if Claude Desktop isn't installed/visible yet.
+    _start_claude_connect_watch(data_dir)
 
     # --- Start the web server in a background thread ---
     from waitress import serve

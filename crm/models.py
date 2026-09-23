@@ -167,3 +167,43 @@ class Interaction(models.Model):
 
     def __str__(self):
         return f"{self.get_direction_display()} – {self.contact.name} ({self.date})"
+
+
+class SearchProfile(models.Model):
+    """Who to look for, per business, when prospecting for new contacts.
+
+    Read by the MCP server's get_search_profile tool so a connected Claude
+    searches for prospects against the owner's own description of the ideal
+    customer instead of improvising one.
+    """
+
+    business = models.CharField(
+        max_length=30,
+        choices=Contact.BUSINESS_CHOICES,
+        unique=True,
+        help_text="Which business this profile searches for",
+    )
+    website = models.URLField(blank=True)
+    audience_description = models.TextField(
+        blank=True, help_text="Who the ideal prospect is, in plain words"
+    )
+    keywords = models.TextField(
+        blank=True,
+        help_text=(
+            "Comma-separated signal phrases, e.g. life coach, Gumroad, "
+            "sick of paying fees, alternative to Kajabi"
+        ),
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["business"]
+
+    def __str__(self):
+        return self.get_business_display()
+
+    @property
+    def keyword_list(self):
+        return [k.strip() for k in self.keywords.split(",") if k.strip()]
