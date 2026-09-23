@@ -16,3 +16,8 @@ mcp<2
 # Pulled in transitively by mcp on Windows; pinned as a direct dependency so
 # the PyInstaller build always has the win32 shims it expects.
 pywin32; sys_platform == "win32"
+
+# scripts/apify_pipeline.py talks to the Apify API. Already pulled in
+# transitively by mcp, but pinned directly so the script doesn't silently
+# break if that stops being true.
+httpx
