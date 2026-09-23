@@ -11,3 +11,8 @@ db.sqlite3
 /data/
 /build/
 /dist/
+
+# Raw scrape output from scripts/apify_pipeline.py -- contains real usernames
+# and comment text pulled from third-party sites; not source, don't commit it.
+/scripts/last_run.json
+/scripts/*.output.json
