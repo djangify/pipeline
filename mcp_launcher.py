@@ -24,7 +24,21 @@ def main() -> None:
     try:
         from desktop import _ensure_secret_key, _writable_data_dir
 
-        _ensure_secret_key(_writable_data_dir())
+        data_dir = _writable_data_dir()
+        # Never create the packaged database from here. Pipeline.exe copies an
+        # existing install's data over on first launch (see
+        # desktop._copy_legacy_data); if this ran first it would create an
+        # empty database and that copy would be skipped.
+        if getattr(sys, "frozen", False) and not (data_dir / "db" / "db.sqlite3").exists():
+            print(
+                "Pipeline has no database yet. Open Pipeline.exe once, then "
+                "restart Claude Desktop.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        _ensure_secret_key(data_dir)
+    except SystemExit:
+        raise
     except Exception:
         pass
 

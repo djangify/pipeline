@@ -46,7 +46,7 @@ saying why they fit. Outreach is left to you.
 - **Packaged:** launching `Pipeline.exe` registers `Pipeline-mcp.exe` (built
   alongside it) in Claude Desktop's config as `pipeline`. Restart Claude
   Desktop once afterwards. Outcome is recorded in
-  `%LOCALAPPDATA%\Pipeline\claude_connect_state.json` / `claude_connect.log`.
+  `%USERPROFILE%\Pipeline Data\claude_connect_state.json` / `claude_connect.log`.
 - **From source:** `python manage.py runmcp` (or `python mcp_launcher.py`)
   runs the server against the dev database in `data/`.
 
@@ -63,6 +63,33 @@ python manage.py runserver
 ```
 
 Then visit `http://127.0.0.1:8000/` and log in.
+
+## Where the desktop app keeps its data
+
+`Pipeline.exe` stores its database, uploads and secret key in
+`%USERPROFILE%\Pipeline Data`, **not** AppData. Claude Desktop is a packaged
+Windows app and silently redirects AppData for anything it launches, so the
+app window and the Claude connector would otherwise each get their own
+database (research saved by Claude would never appear in the app). If an old
+`%LOCALAPPDATA%\Pipeline` install drifted apart from it, merge its research in
+with `python manage.py import_research_db <path to its db.sqlite3>`.
+
+## Logins: every user must be a superuser
+
+**Whenever you set up a new user, give them superuser access.** Pipeline is a
+single-owner tool and Django admin (the Admin link, search profiles, raw
+research data) only lets in staff users. A normal user gets bounced to the
+admin login page, which looks exactly like being logged out.
+
+- **From the command line:** always use `python manage.py createsuperuser`,
+  never `create_user`.
+- **In the admin (Admin → Users → Add user):** after saving, tick both
+  **Staff status** and **Superuser status** on the next screen, then save again.
+
+The packaged app creates `admin@example.com` / `admin123` as a superuser on
+first launch. Full steps, including how to upgrade an existing login and how
+to run these commands against the packaged app's database, are in
+[docs/USERS.md](docs/USERS.md).
 
 ## Notes
 

@@ -19,7 +19,9 @@
                         <a href="{% url 'crm:contact_list' %}" class="text-slate-600 hover:text-slate-900">Contacts</a>
                         <a href="{% url 'crm:followups' %}" class="text-slate-600 hover:text-slate-900">Follow-ups</a>
                         <a href="{% url 'research:home' %}" class="text-slate-600 hover:text-slate-900">Research</a>
+                        {% if user.is_staff %}
                         <a href="{% url 'admin:index' %}" class="text-slate-600 hover:text-slate-900">Admin</a>
+                        {% endif %}
                     </div>
                     {% endif %}
                 </div>

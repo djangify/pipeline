@@ -40,15 +40,18 @@ datas += collect_data_files("mcp")
 
 # Local Django apps + the project package. Django imports these by name at
 # runtime, so PyInstaller can't discover them by following imports alone.
-for pkg in ["config", "crm", "mcp_server"]:
+for pkg in ["config", "crm", "research", "mcp_server"]:
     hiddenimports += collect_submodules(pkg)
 
 # Templates. collect_submodules() only gathers Python modules, not data
-# files, so crm's own templates/ must be listed explicitly. It lands in
-# _internal/crm/templates, where Django's app_directories loader looks.
+# files, so each app's own templates/ must be listed explicitly. They land in
+# _internal/<app>/templates, where Django's app_directories loader looks.
+# A new app with templates needs a line here too, or its pages 500 in the
+# .exe while working fine from source.
 datas += [
     ("templates", "templates"),
     ("crm/templates", "crm/templates"),
+    ("research/templates", "research/templates"),
 ]
 
 # Modules Pipeline references by string name (in settings: MIDDLEWARE,
@@ -64,6 +67,13 @@ hiddenimports += [
     "crm.serializers",
     "crm.admin",
     "crm.management.commands.runmcp",
+    "research.urls",
+    "research.api_urls",
+    "research.views",
+    "research.apps",
+    "research.serializers",
+    "research.admin",
+    "research.management.commands.import_research_db",
     "mcp_server.server",
     "mcp_server.desktop_connect",
     # mcp_launcher.py imports desktop lazily for the shared data dir/SECRET_KEY.

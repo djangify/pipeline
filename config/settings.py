@@ -16,14 +16,13 @@ if os.environ.get("PIPELINE_DATA_DIR"):
     # folder a packaged build uses.
     DATA_DIR = Path(os.environ["PIPELINE_DATA_DIR"])
 elif getattr(sys, "frozen", False):
-    DATA_DIR = (
-        Path(
-            os.environ.get("LOCALAPPDATA")
-            or os.environ.get("APPDATA")
-            or Path.home()
-        )
-        / "Pipeline"
-    )
+    # Deliberately NOT under AppData: Claude Desktop is an MSIX-packaged app,
+    # and Windows silently redirects AppData writes from anything it launches
+    # (including Pipeline-mcp.exe) into Claude's own private LocalCache. The
+    # app window and the Claude connector then each get a separate database.
+    # The user profile folder isn't virtualized, so both see the same file.
+    # Keep in sync with desktop._writable_data_dir().
+    DATA_DIR = Path.home() / "Pipeline Data"
 else:
     DATA_DIR = BASE_DIR / "data"
 
@@ -130,6 +129,14 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = DATA_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Browsers share cookies across every port on 127.0.0.1, and the desktop app
+# picks a random port each launch. Other local Django apps (e.g. Lead
+# Generation Studio) also use the default "sessionid"/"csrftoken" names, so
+# logging into one silently logged you out of the other. Unique names keep
+# Pipeline's login separate.
+SESSION_COOKIE_NAME = "pipeline_sessionid"
+CSRF_COOKIE_NAME = "pipeline_csrftoken"
 
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "crm:contact_list"

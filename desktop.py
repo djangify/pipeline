@@ -21,14 +21,43 @@ from pathlib import Path
 
 def _writable_data_dir() -> Path:
     """Match the DATA_DIR logic in config/settings.py so we can store a secret key."""
+    if os.environ.get("PIPELINE_DATA_DIR"):
+        return Path(os.environ["PIPELINE_DATA_DIR"])
     if getattr(sys, "frozen", False):
-        base = (
-            os.environ.get("LOCALAPPDATA")
-            or os.environ.get("APPDATA")
-            or str(Path.home())
-        )
-        return Path(base) / "Pipeline"
+        # Not AppData -- see the DATA_DIR comment in config/settings.py.
+        return Path.home() / "Pipeline Data"
     return Path(__file__).resolve().parent / "data"
+
+
+def _legacy_data_dir() -> Path:
+    """Where packaged builds kept their data before moving to "Pipeline Data"."""
+    base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or str(Path.home())
+    return Path(base) / "Pipeline"
+
+
+def _copy_legacy_data(data_dir: Path) -> None:
+    """One-time move of an existing install's database, media and SECRET_KEY
+    from the old AppData location. Copies rather than moves, so the old folder
+    stays as a backup. Only Pipeline.exe calls this: it is started by the user,
+    so it sees the real AppData, whereas Pipeline-mcp.exe is started by Claude
+    Desktop and would see Claude's virtualized copy instead."""
+    import shutil
+
+    if not getattr(sys, "frozen", False) or os.environ.get("PIPELINE_DATA_DIR"):
+        return
+    legacy = _legacy_data_dir()
+    if (data_dir / "db" / "db.sqlite3").exists() or not (legacy / "db" / "db.sqlite3").exists():
+        return
+    try:
+        data_dir.mkdir(parents=True, exist_ok=True)
+        for name in ("db", "media"):
+            if (legacy / name).is_dir():
+                shutil.copytree(legacy / name, data_dir / name, dirs_exist_ok=True)
+        if (legacy / "secret_key.txt").exists():
+            shutil.copy2(legacy / "secret_key.txt", data_dir / "secret_key.txt")
+        _append_log(data_dir, "startup.log", f"copied existing data from {legacy}")
+    except Exception as exc:
+        _append_log(data_dir, "startup.log", f"copy from {legacy} failed: {exc}")
 
 
 def _ensure_secret_key(data_dir: Path) -> None:
@@ -144,6 +173,7 @@ def main() -> None:
     os.environ.setdefault("DEBUG", "True")
 
     data_dir = _writable_data_dir()
+    _copy_legacy_data(data_dir)
     _ensure_secret_key(data_dir)
 
     import django
