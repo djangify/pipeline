@@ -1,0 +1,36 @@
+<!-- research/templates/research/home.html -->
+{% extends 'base.html' %}
+{% block title %}Research - Pipeline{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="flex justify-between items-center mb-6">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-800">Market Research</h1>
+            <p class="text-sm text-gray-500 mt-1">Competitor ads, keyword opportunities and pain themes, per business.</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {% for b in businesses %}
+        <a href="{% url 'research:business_detail' b.key %}" class="bg-white shadow-md rounded-lg p-5 hover:shadow-lg transition-shadow block">
+            <h2 class="text-lg font-semibold text-gray-800 mb-3">{{ b.label }}</h2>
+            <div class="flex gap-4 text-sm">
+                <div>
+                    <span class="text-2xl font-bold {% if b.pain_theme_count %}text-indigo-600{% else %}text-gray-300{% endif %}">{{ b.pain_theme_count }}</span>
+                    <p class="text-gray-500">Pain themes</p>
+                </div>
+                <div>
+                    <span class="text-2xl font-bold {% if b.ad_count %}text-indigo-600{% else %}text-gray-300{% endif %}">{{ b.ad_count }}</span>
+                    <p class="text-gray-500">Competitor ads</p>
+                </div>
+                <div>
+                    <span class="text-2xl font-bold {% if b.keyword_count %}text-indigo-600{% else %}text-gray-300{% endif %}">{{ b.keyword_count }}</span>
+                    <p class="text-gray-500">Keywords</p>
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

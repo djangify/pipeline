@@ -16,7 +16,8 @@ urlpatterns = [
         auth_views.LogoutView.as_view(next_page="login"),
         name="logout",
     ),
-    path("api/research/", include("research.urls")),
+    path("api/research/", include("research.api_urls")),
+    path("research/", include("research.urls")),
     path("", include("crm.urls")),
 ]
 

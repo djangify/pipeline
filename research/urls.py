@@ -1,13 +1,11 @@
-# research/urls.py
-from rest_framework.routers import DefaultRouter
+# research/urls.py -- frontend pages. API routes live in research/api_urls.py.
+from django.urls import path
 
 from . import views
 
 app_name = "research"
 
-router = DefaultRouter()
-router.register(r"ads", views.CompetitorAdViewSet)
-router.register(r"keywords", views.KeywordViewSet)
-router.register(r"pain-themes", views.PainThemeViewSet)
-
-urlpatterns = router.urls
+urlpatterns = [
+    path("", views.ResearchHomeView.as_view(), name="home"),
+    path("<str:business>/", views.ResearchBusinessView.as_view(), name="business_detail"),
+]
