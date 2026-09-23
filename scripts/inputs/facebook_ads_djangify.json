@@ -1,0 +1,11 @@
+{
+  "startUrls": [
+    { "url": "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=Shopify&search_type=keyword_unordered" },
+    { "url": "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=Gumroad&search_type=keyword_unordered" },
+    { "url": "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=Kajabi&search_type=keyword_unordered" }
+  ],
+  "resultsLimit": 15,
+  "activeStatus": "active",
+  "isDetailsPerAd": false,
+  "enrichWithEcommerceData": false
+}
