@@ -1,9 +1,11 @@
 # mcp_server/server.py
-"""MCP server exposing Pipeline's contacts and search profiles over stdio.
+"""MCP server exposing Pipeline's contacts, search profiles and market
+research over stdio.
 
 Point Claude Desktop / Cowork / Claude Code at it (desktop.py registers it in
 Claude Desktop's config automatically on launch) so an external Claude can look
-up contacts, add AI-sourced prospects for review, and check follow-ups due.
+up contacts, add AI-sourced prospects for review, check follow-ups due, and
+record competitor ads / keywords / pain themes surfaced by scraping tools.
 
 Run it with:  python manage.py runmcp   (stdio transport)
 """
@@ -33,6 +35,8 @@ from django.utils import timezone
 from mcp.server.fastmcp import FastMCP
 
 from crm.models import Contact, SearchProfile
+from research.models import BUSINESS_CHOICES as RESEARCH_BUSINESS_CHOICES
+from research.models import CompetitorAd, Keyword, PainTheme
 
 # The server-level instructions Claude Desktop / Cowork reads at connect time.
 # The job of this connector ends at getting well-researched candidates INTO
@@ -74,7 +78,17 @@ INSTRUCTIONS = (
     "comment on or otherwise contact anyone, and do not draft outreach unless "
     "the owner explicitly asks. Your job ends at getting candidates into "
     "Pipeline for review. Only change a contact's status past 'new' when the "
-    "owner tells you what happened."
+    "owner tells you what happened.\n\n"
+    "MARKET RESEARCH (competitor ads, keywords, pain themes). Not everything "
+    "a scraping tool surfaces is a person to contact -- competitor ad copy, "
+    "keyword/SERP data, and aggregated complaint themes are research, not "
+    "leads. Record those with create_competitor_ad, upsert_keyword and "
+    "upsert_pain_theme instead of create_contact. The keyword and pain-theme "
+    "tools are upserts (safe to call again on a re-run for the same "
+    "business+term or business+theme); create_competitor_ad checks for an "
+    "existing ad with the same business, competitor and angle first. Same "
+    "public-data-only rule applies: only what's already public (ad libraries, "
+    "public reviews, public forum threads), nothing behind a login."
 )
 
 mcp = FastMCP("pipeline", instructions=INSTRUCTIONS)
@@ -623,6 +637,249 @@ def update_search_profile(
         return {"error": f"Not saved: {exc}"}
     p.save()
     return {"updated": _profile_dict(p)}
+
+
+# --- research: competitor ads, keywords, pain themes -------------------------
+
+def _ad_dict(a: CompetitorAd) -> dict:
+    return {
+        "id": a.id,
+        "business": a.business,
+        "platform": a.platform,
+        "competitor_name": a.competitor_name,
+        "headline": a.headline,
+        "angle": a.angle,
+        "ad_copy": a.ad_copy,
+        "link": a.link,
+        "date_pulled": a.date_pulled.isoformat(),
+        "notes": a.notes,
+        "updated_at": a.updated_at.isoformat(timespec="seconds"),
+    }
+
+
+def _keyword_dict(k: Keyword) -> dict:
+    return {
+        "id": k.id,
+        "business": k.business,
+        "term": k.term,
+        "difficulty_score": k.difficulty_score,
+        "search_volume": k.search_volume,
+        "top_ranking_domain": k.top_ranking_domain,
+        "notes": k.notes,
+        "updated_at": k.updated_at.isoformat(timespec="seconds"),
+    }
+
+
+def _pain_theme_dict(t: PainTheme) -> dict:
+    return {
+        "id": t.id,
+        "business": t.business,
+        "theme": t.theme,
+        "description": t.description,
+        "quote_count": t.quote_count,
+        "source_breakdown": t.source_breakdown,
+        "example_quotes": t.example_quotes,
+        "updated_at": t.updated_at.isoformat(timespec="seconds"),
+    }
+
+
+@mcp.tool()
+def list_competitor_ads(business: str = "", competitor_name: str = "", limit: int = 50) -> dict:
+    """List competitor ads pulled from ad libraries (Meta/Google/LinkedIn),
+    newest-pulled first. Filter by business (djangify / inspirational_guidance
+    / self_talk_effect / todiane / other) and/or competitor_name."""
+    qs = CompetitorAd.objects.all()
+    try:
+        if business:
+            qs = qs.filter(business=_resolve_choice(business, RESEARCH_BUSINESS_CHOICES, "business"))
+    except ValueError as exc:
+        return {"error": str(exc)}
+    if competitor_name.strip():
+        qs = qs.filter(competitor_name__icontains=competitor_name.strip())
+    total = qs.count()
+    limit = max(1, min(int(limit or 50), 200))
+    return {"total": total, "returned": min(total, limit), "ads": [_ad_dict(a) for a in qs[:limit]]}
+
+
+@mcp.tool()
+def create_competitor_ad(
+    business: str,
+    competitor_name: str,
+    angle: str,
+    platform: str = "other",
+    headline: str = "",
+    ad_copy: str = "",
+    link: str = "",
+    date_pulled: str = "",
+    notes: str = "",
+    allow_duplicate: bool = False,
+) -> dict:
+    """Record a competitor ad (market research, not a lead -- there is no one
+    to contact here). business: djangify / inspirational_guidance /
+    self_talk_effect / todiane / other. platform: meta / google / linkedin /
+    other. angle is the messaging angle/positioning this ad uses -- required.
+    date_pulled: YYYY-MM-DD, defaults to today.
+
+    Refuses to save if an ad with the same business, competitor_name and angle
+    already exists (a re-run of the same scrape), unless allow_duplicate=True."""
+    competitor_name = (competitor_name or "").strip()
+    angle = (angle or "").strip()
+    if not competitor_name or not angle:
+        return {"error": "competitor_name and angle are required."}
+    try:
+        business_key = _resolve_choice(business, RESEARCH_BUSINESS_CHOICES, "business")
+        platform_key = _resolve_choice(platform or "other", CompetitorAd.PLATFORM_CHOICES, "platform")
+        pulled = _parse_date(date_pulled, "date_pulled") if date_pulled else timezone.localdate()
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+    if not allow_duplicate:
+        existing = CompetitorAd.objects.filter(
+            business=business_key, competitor_name__iexact=competitor_name, angle__iexact=angle
+        ).first()
+        if existing:
+            return {
+                "error": (
+                    "Not saved: an ad with this business, competitor and angle "
+                    "already exists. Pass allow_duplicate=True if it's really a "
+                    "different ad."
+                ),
+                "existing": _ad_dict(existing),
+            }
+
+    ad = CompetitorAd(
+        business=business_key,
+        platform=platform_key,
+        competitor_name=competitor_name,
+        headline=(headline or "").strip(),
+        angle=angle,
+        ad_copy=(ad_copy or "").strip(),
+        link=(link or "").strip(),
+        date_pulled=pulled,
+        notes=(notes or "").strip(),
+    )
+    try:
+        ad.full_clean()
+    except Exception as exc:
+        return {"error": f"Not saved: {exc}"}
+    ad.save()
+    return {"created": _ad_dict(ad)}
+
+
+@mcp.tool()
+def list_keywords(business: str = "", limit: int = 100) -> dict:
+    """List keyword research, grouped by business then term. Filter by
+    business (djangify / inspirational_guidance / self_talk_effect / todiane /
+    other)."""
+    qs = Keyword.objects.all()
+    try:
+        if business:
+            qs = qs.filter(business=_resolve_choice(business, RESEARCH_BUSINESS_CHOICES, "business"))
+    except ValueError as exc:
+        return {"error": str(exc)}
+    total = qs.count()
+    limit = max(1, min(int(limit or 100), 300))
+    return {"total": total, "returned": min(total, limit), "keywords": [_keyword_dict(k) for k in qs[:limit]]}
+
+
+@mcp.tool()
+def upsert_keyword(
+    business: str,
+    term: str,
+    difficulty_score: int | None = None,
+    search_volume: int | None = None,
+    top_ranking_domain: str = "",
+    notes: str = "",
+) -> dict:
+    """Save keyword/SERP research. Safe to call again for the same
+    business+term on a re-run -- updates the existing row instead of
+    duplicating it. Only fields you pass are changed; leave difficulty_score /
+    search_volume / top_ranking_domain out to leave them as they are.
+    business: djangify / inspirational_guidance / self_talk_effect / todiane /
+    other. difficulty_score: 0-100."""
+    term = (term or "").strip()
+    if not term:
+        return {"error": "term is required."}
+    try:
+        business_key = _resolve_choice(business, RESEARCH_BUSINESS_CHOICES, "business")
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+    keyword, created = Keyword.objects.get_or_create(business=business_key, term=term)
+    if difficulty_score is not None:
+        keyword.difficulty_score = difficulty_score
+    if search_volume is not None:
+        keyword.search_volume = search_volume
+    if top_ranking_domain.strip():
+        keyword.top_ranking_domain = top_ranking_domain.strip()
+    if notes.strip():
+        keyword.notes = notes.strip()
+    try:
+        keyword.full_clean()
+    except Exception as exc:
+        return {"error": f"Not saved: {exc}"}
+    keyword.save()
+    return {"created" if created else "updated": _keyword_dict(keyword)}
+
+
+@mcp.tool()
+def list_pain_themes(business: str = "", limit: int = 50) -> dict:
+    """List aggregated pain/complaint themes, most-supported first. Filter by
+    business (djangify / inspirational_guidance / self_talk_effect / todiane /
+    other)."""
+    qs = PainTheme.objects.all()
+    try:
+        if business:
+            qs = qs.filter(business=_resolve_choice(business, RESEARCH_BUSINESS_CHOICES, "business"))
+    except ValueError as exc:
+        return {"error": str(exc)}
+    total = qs.count()
+    limit = max(1, min(int(limit or 50), 200))
+    return {"total": total, "returned": min(total, limit), "pain_themes": [_pain_theme_dict(t) for t in qs[:limit]]}
+
+
+@mcp.tool()
+def upsert_pain_theme(
+    business: str,
+    theme: str,
+    description: str = "",
+    quote_count: int | None = None,
+    add_quote_count: int = 0,
+    source_breakdown: str = "",
+    example_quotes: str = "",
+) -> dict:
+    """Save an aggregated pain/complaint theme synthesized from reviews and
+    forum threads (a pattern across many people, not one person to contact).
+    Safe to call again for the same business+theme on a re-run -- updates the
+    existing row instead of duplicating it. quote_count REPLACES the count;
+    add_quote_count adds to whatever is already there instead (use this on a
+    re-run so counts accumulate rather than reset). business: djangify /
+    inspirational_guidance / self_talk_effect / todiane / other."""
+    theme = (theme or "").strip()
+    if not theme:
+        return {"error": "theme is required."}
+    try:
+        business_key = _resolve_choice(business, RESEARCH_BUSINESS_CHOICES, "business")
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+    pain_theme, created = PainTheme.objects.get_or_create(business=business_key, theme=theme)
+    if description.strip():
+        pain_theme.description = description.strip()
+    if quote_count is not None:
+        pain_theme.quote_count = max(0, quote_count)
+    if add_quote_count:
+        pain_theme.quote_count = max(0, pain_theme.quote_count + add_quote_count)
+    if source_breakdown.strip():
+        pain_theme.source_breakdown = source_breakdown.strip()
+    if example_quotes.strip():
+        pain_theme.example_quotes = example_quotes.strip()
+    try:
+        pain_theme.full_clean()
+    except Exception as exc:
+        return {"error": f"Not saved: {exc}"}
+    pain_theme.save()
+    return {"created" if created else "updated": _pain_theme_dict(pain_theme)}
 
 
 if __name__ == "__main__":
