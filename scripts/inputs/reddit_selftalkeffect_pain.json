@@ -1,0 +1,20 @@
+{
+  "searches": [
+    "why do I know what to do but not do it",
+    "negative self talk won't stop",
+    "affirmations don't work for me",
+    "stuck in my own head overthinking",
+    "self sabotage even when I know better",
+    "inner critic exhausting"
+  ],
+  "searchPosts": true,
+  "searchComments": true,
+  "searchCommunities": false,
+  "searchUsers": false,
+  "searchMedia": false,
+  "sort": "relevance",
+  "time": "year",
+  "maxItems": 40,
+  "maxPostCount": 40,
+  "maxComments": 20
+}
