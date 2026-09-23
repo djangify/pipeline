@@ -1,0 +1,17 @@
+{
+  "searches": [
+    "Shopify fees too expensive",
+    "alternative to Shopify no monthly fee",
+    "sick of Gumroad fees",
+    "WooCommerce plugins keep breaking",
+    "Etsy fees going up",
+    "Kajabi alternative cheaper"
+  ],
+  "searchPosts": true,
+  "searchComments": true,
+  "sort": "relevance",
+  "time": "year",
+  "maxItems": 40,
+  "maxPostCount": 40,
+  "maxComments": 20
+}
