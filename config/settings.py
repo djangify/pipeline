@@ -46,9 +46,25 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "rest_framework.authtoken",
     "crm",
     "research",
 ]
+
+# The frontend (contact_list.html etc.) is server-rendered Django views, not
+# API calls, so this only gates the REST endpoints (/api/contacts/,
+# /api/research/...) themselves. SessionAuthentication covers a logged-in
+# browser hitting the browsable API; TokenAuthentication covers scripts (see
+# crm.management.commands.issue_api_token).
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+        "rest_framework.authentication.TokenAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+}
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
