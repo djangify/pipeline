@@ -87,7 +87,25 @@
                 <div>
                     <label for="{{ form.revenue.id_for_label }}" class="block text-sm font-medium text-gray-700">Revenue (&pound;)</label>
                     <input type="number" step="0.01" min="0" name="{{ form.revenue.name }}" id="{{ form.revenue.id_for_label }}" value="{{ form.revenue.value|default:'' }}" placeholder="0.00" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                    <p class="text-xs text-gray-500 mt-1">Total this contact has paid</p>
+                    <p class="text-xs text-gray-500 mt-1">Overwritten automatically once you log a purchase</p>
+                </div>
+
+                <div>
+                    <label for="{{ form.next_touch_date.id_for_label }}" class="block text-sm font-medium text-gray-700">Next check-in</label>
+                    <input type="date" name="{{ form.next_touch_date.name }}" id="{{ form.next_touch_date.id_for_label }}" value="{{ form.next_touch_date.value|date:'Y-m-d'|default:'' }}" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                    <p class="text-xs text-gray-500 mt-1">Post-sale nudge: thank-you, how's it going, re-offer</p>
+                </div>
+
+                <div>
+                    <label for="{{ form.next_touch_note.id_for_label }}" class="block text-sm font-medium text-gray-700">Check-in note</label>
+                    <input type="text" name="{{ form.next_touch_note.name }}" id="{{ form.next_touch_note.id_for_label }}" value="{{ form.next_touch_note.value|default:'' }}" placeholder="e.g. ask how onboarding went" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                </div>
+
+                <div class="md:col-span-2">
+                    <label for="{{ form.dead_reason.id_for_label }}" class="block text-sm font-medium text-gray-700">Reason (if Dead)</label>
+                    <input type="text" name="{{ form.dead_reason.name }}" id="{{ form.dead_reason.id_for_label }}" value="{{ form.dead_reason.value|default:'' }}" placeholder="e.g. went with a competitor, budget, ghosted" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                    {% if form.dead_reason.errors %}<p class="text-red-500 text-xs mt-1">{{ form.dead_reason.errors|join:", " }}</p>{% endif %}
+                    <p class="text-xs text-gray-500 mt-1">Required before you can save this contact as Dead / No interest.</p>
                 </div>
             </div>
 

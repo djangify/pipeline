@@ -18,6 +18,7 @@
                     <div class="hidden md:flex space-x-4">
                         <a href="{% url 'crm:contact_list' %}" class="text-slate-600 hover:text-slate-900">Contacts</a>
                         <a href="{% url 'crm:followups' %}" class="text-slate-600 hover:text-slate-900">Follow-ups</a>
+                        <a href="{% url 'crm:reports' %}" class="text-slate-600 hover:text-slate-900">Reports</a>
                         <a href="{% url 'research:home' %}" class="text-slate-600 hover:text-slate-900">Research</a>
                         {% if user.is_staff %}
                         <a href="{% url 'admin:index' %}" class="text-slate-600 hover:text-slate-900">Admin</a>
@@ -37,6 +38,16 @@
             </div>
         </div>
     </nav>
+
+    {% if messages %}
+    <div class="container mx-auto px-4 pt-4 space-y-2">
+        {% for message in messages %}
+        <div class="rounded-md px-4 py-2 text-sm {% if message.tags == 'error' %}bg-red-100 text-red-800{% else %}bg-green-100 text-green-800{% endif %}">
+            {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 
     <main class="flex-grow">
         {% block content %}{% endblock %}

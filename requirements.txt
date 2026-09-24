@@ -1,4 +1,4 @@
-adminita==0.1.12
+adminita==0.2.0
 Django==5.2.9
 django-environ
 djangorestframework

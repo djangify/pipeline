@@ -34,7 +34,7 @@ from django.db.models import Q
 from django.utils import timezone
 from mcp.server.fastmcp import FastMCP
 
-from crm.models import Contact, SearchProfile
+from crm.models import Contact, Purchase, SearchProfile
 from research.models import BUSINESS_CHOICES as RESEARCH_BUSINESS_CHOICES
 from research.models import CompetitorAd, Keyword, PainTheme
 
@@ -79,6 +79,14 @@ INSTRUCTIONS = (
     "the owner explicitly asks. Your job ends at getting candidates into "
     "Pipeline for review. Only change a contact's status past 'new' when the "
     "owner tells you what happened.\n\n"
+    "POST-SALE. A contact isn't done once they buy. Log what they bought with "
+    "create_purchase (this also flips status to 'converted' and keeps "
+    "made_purchase/revenue in sync automatically -- never set those two "
+    "fields directly). list_purchases shows purchase history. "
+    "list_checkins_due is the after-the-sale counterpart to "
+    "list_followups_due -- use it to see who bought something and has since "
+    "gone quiet; set a check-in with update_contact's next_touch_date/"
+    "next_touch_note.\n\n"
     "MARKET RESEARCH (competitor ads, keywords, pain themes). Not everything "
     "a scraping tool surfaces is a person to contact -- competitor ad copy, "
     "keyword/SERP data, and aggregated complaint themes are research, not "
@@ -178,12 +186,28 @@ def _contact_dict(c: Contact, *, full: bool = False) -> dict:
             "joined_email_list": c.joined_email_list,
             "made_purchase": c.made_purchase,
             "revenue": str(c.revenue) if c.revenue is not None else None,
+            "next_touch_date": c.next_touch_date.isoformat() if c.next_touch_date else None,
+            "next_touch_note": c.next_touch_note,
             "created_at": c.created_at.isoformat(timespec="seconds"),
         })
     else:
         # A short preview is enough to recognise someone in a list.
         out["notes_preview"] = (c.notes[:160] + "...") if len(c.notes) > 160 else c.notes
     return out
+
+
+def _purchase_dict(p: Purchase) -> dict:
+    return {
+        "id": p.id,
+        "contact_id": p.contact_id,
+        "contact_name": p.contact.name,
+        "product": p.product,
+        "amount": str(p.amount),
+        "date": p.date.isoformat(),
+        "source": p.source,
+        "external_order_id": p.external_order_id,
+        "notes": p.notes,
+    }
 
 
 def _profile_dict(p: SearchProfile) -> dict:
@@ -463,13 +487,18 @@ def update_contact(
     add_tags: str = "",
     follow_up_date: str = "",
     business: str = "",
+    next_touch_date: str = "",
+    next_touch_note: str = "",
 ) -> dict:
     """Update a contact's status and/or notes (plus a few small extras).
     status: new / contacted / replied / in_conversation / converted / dead;
     only move a contact past 'new' when the owner tells you what happened.
     notes REPLACES the whole notes field; append_note adds a dated line to the
     end instead (prefer this). add_tags merges comma-separated tags in.
-    follow_up_date: YYYY-MM-DD, or 'none' to clear it."""
+    follow_up_date: pre-sale follow-up, YYYY-MM-DD or 'none' to clear it.
+    next_touch_date: post-sale check-in reminder (thank-you, how's it going,
+    re-offer) — YYYY-MM-DD or 'none' to clear it. next_touch_note: what that
+    check-in is for, e.g. 'ask how the onboarding went'."""
     try:
         c = Contact.objects.get(pk=contact_id)
     except Contact.DoesNotExist:
@@ -488,6 +517,12 @@ def update_contact(
                 else _parse_date(follow_up_date, "follow_up_date")
             )
             changed.append("follow_up_date")
+        if next_touch_date:
+            c.next_touch_date = (
+                None if next_touch_date.strip().lower() == "none"
+                else _parse_date(next_touch_date, "next_touch_date")
+            )
+            changed.append("next_touch_date")
     except ValueError as exc:
         return {"error": str(exc)}
     if notes is not None:
@@ -500,8 +535,11 @@ def update_contact(
     if add_tags.strip():
         c.tags = _merge_tags(c.tags, add_tags)
         changed.append("tags")
+    if next_touch_note.strip():
+        c.next_touch_note = next_touch_note.strip()
+        changed.append("next_touch_note")
     if not changed:
-        return {"error": "Nothing to update: pass status, notes, append_note, add_tags, follow_up_date or business."}
+        return {"error": "Nothing to update: pass status, notes, append_note, add_tags, follow_up_date, business, next_touch_date or next_touch_note."}
     c.save()
     return {"updated_fields": sorted(set(changed)), "contact": _contact_dict(c, full=True)}
 
@@ -529,6 +567,117 @@ def list_followups_due(days_ahead: int = 0, business: str = "", include_upcoming
         row["days_overdue"] = max(0, (today - c.follow_up_date).days)
         rows.append(row)
     return {"today": today.isoformat(), "count": len(rows), "followups": rows}
+
+
+@mcp.tool()
+def list_checkins_due(days_ahead: int = 0, business: str = "", include_upcoming: bool = False) -> dict:
+    """Contacts with a post-sale check-in due: next_touch_date on or before
+    today + days_ahead (0 = due today or overdue). This is the after-the-sale
+    counterpart to list_followups_due -- use it to see who bought something
+    and has gone quiet. include_upcoming=True returns every scheduled
+    check-in regardless of date. Sorted by date, oldest first."""
+    today = timezone.localdate()
+    qs = Contact.objects.filter(next_touch_date__isnull=False)
+    if not include_upcoming:
+        qs = qs.filter(next_touch_date__lte=today + datetime.timedelta(days=max(0, int(days_ahead or 0))))
+    if business:
+        try:
+            qs = qs.filter(business=_resolve_choice(business, Contact.BUSINESS_CHOICES, "business"))
+        except ValueError as exc:
+            return {"error": str(exc)}
+    rows = []
+    for c in qs.order_by("next_touch_date"):
+        row = _contact_dict(c, full=True)
+        row["days_overdue"] = max(0, (today - c.next_touch_date).days)
+        rows.append(row)
+    return {"today": today.isoformat(), "count": len(rows), "checkins": rows}
+
+
+# --- purchases ----------------------------------------------------------------
+
+@mcp.tool()
+def list_purchases(contact_id: int | None = None, business: str = "", limit: int = 50) -> dict:
+    """List logged purchases, newest first. Filter by contact_id, or by
+    business (djangify / inspirational_guidance / self_talk_effect / todiane /
+    other) to see purchases across everyone tied to that business."""
+    qs = Purchase.objects.select_related("contact").all()
+    if contact_id is not None:
+        qs = qs.filter(contact_id=contact_id)
+    if business:
+        try:
+            key = _resolve_choice(business, Contact.BUSINESS_CHOICES, "business")
+        except ValueError as exc:
+            return {"error": str(exc)}
+        qs = qs.filter(contact__business=key)
+    rows = [_purchase_dict(p) for p in qs[: max(1, min(int(limit or 50), 200))]]
+    return {"count": len(rows), "purchases": rows}
+
+
+@mcp.tool()
+def create_purchase(
+    contact_id: int,
+    product: str,
+    amount: str,
+    date: str = "",
+    source: str = "manual",
+    external_order_id: str = "",
+    notes: str = "",
+) -> dict:
+    """Log a purchase against an existing contact. Sets the contact's
+    made_purchase flag and revenue total automatically (revenue becomes the
+    sum of all their logged purchases), and moves status to 'converted' if it
+    wasn't already. amount: e.g. '49.00'. date: YYYY-MM-DD, defaults to today.
+    source: 'manual' or 'djangify' (use 'djangify' + external_order_id when
+    importing from a Djangify order, so a re-run doesn't create duplicates --
+    this call is safe to retry with the same external_order_id, it will
+    update the existing purchase instead of creating a second one)."""
+    try:
+        c = Contact.objects.get(pk=contact_id)
+    except Contact.DoesNotExist:
+        return {"error": f"No contact with id {contact_id}."}
+    try:
+        amt = Decimal(str(amount).strip())
+    except InvalidOperation:
+        return {"error": f"amount must be a number, got '{amount}'"}
+    try:
+        source_key = _resolve_choice(source or "manual", Purchase.SOURCE_CHOICES, "source")
+        purchase_date = _parse_date(date, "date") if date else timezone.localdate()
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+    external_order_id = (external_order_id or "").strip() or None
+    if external_order_id:
+        purchase, created = Purchase.objects.update_or_create(
+            external_order_id=external_order_id,
+            defaults={
+                "contact": c,
+                "product": (product or "").strip(),
+                "amount": amt,
+                "date": purchase_date,
+                "source": source_key,
+                "notes": (notes or "").strip(),
+            },
+        )
+    else:
+        purchase = Purchase.objects.create(
+            contact=c,
+            product=(product or "").strip(),
+            amount=amt,
+            date=purchase_date,
+            source=source_key,
+            notes=(notes or "").strip(),
+        )
+        created = True
+
+    if c.status != "converted":
+        c.status = "converted"
+        c.save(update_fields=["status"])
+    c.refresh_from_db()
+    return {
+        "created": created,
+        "purchase": _purchase_dict(purchase),
+        "contact": _contact_dict(c, full=True),
+    }
 
 
 # --- search profiles ------------------------------------------------------------

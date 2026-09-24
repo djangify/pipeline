@@ -82,6 +82,21 @@ class Contact(models.Model):
         help_text="Total amount this contact has paid",
     )
 
+    next_touch_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Post-sale check-in reminder (thank-you, how's it going, re-offer)",
+    )
+    next_touch_note = models.CharField(
+        max_length=255, blank=True, help_text="What the next check-in is for"
+    )
+
+    dead_reason = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Why this went dead (required when status is Dead)",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -167,6 +182,96 @@ class Interaction(models.Model):
 
     def __str__(self):
         return f"{self.get_direction_display()} – {self.contact.name} ({self.date})"
+
+
+def _recalc_contact_totals(contact):
+    """Keep Contact.made_purchase/revenue as the sum of its logged purchases,
+    so the dashboard totals stay correct whether a purchase was typed in
+    manually or synced in from Djangify."""
+    total = contact.purchases.aggregate(total=models.Sum("amount"))["total"] or 0
+    contact.made_purchase = total > 0
+    contact.revenue = total
+    contact.save(update_fields=["made_purchase", "revenue"])
+
+
+class Purchase(models.Model):
+    SOURCE_CHOICES = [
+        ("manual", "Manual entry"),
+        ("djangify", "Djangify sync"),
+    ]
+
+    contact = models.ForeignKey(
+        Contact, on_delete=models.CASCADE, related_name="purchases"
+    )
+    product = models.CharField(max_length=200)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    date = models.DateField(default=timezone.localdate)
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default="manual")
+    external_order_id = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        unique=True,
+        help_text="Djangify order id, used to avoid importing the same order twice",
+    )
+    notes = models.CharField(max_length=255, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-date", "-created_at"]
+
+    def __str__(self):
+        return f"{self.product} – {self.contact.name} ({self.date})"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        _recalc_contact_totals(self.contact)
+
+    def delete(self, *args, **kwargs):
+        contact = self.contact
+        super().delete(*args, **kwargs)
+        _recalc_contact_totals(contact)
+
+
+class Activity(models.Model):
+    """System-written history for a contact.
+
+    Unlike Interaction (what you said to them) and Purchase (what they
+    bought), this exists purely so the contact timeline can show status
+    changes, stage completions, and check-ins alongside those — one merged
+    feed instead of three things you have to mentally stitch together.
+    Never edited by a user; only ever created by the view that made the
+    change, via log_activity() below.
+    """
+
+    TYPE_CHOICES = [
+        ("contact_created", "Contact created"),
+        ("status_changed", "Status changed"),
+        ("stage_completed", "Follow-up stage updated"),
+        ("check_in_done", "Check-in done"),
+        ("purchase_logged", "Purchase logged"),
+    ]
+
+    contact = models.ForeignKey(
+        Contact, on_delete=models.CASCADE, related_name="activities"
+    )
+    activity_type = models.CharField(max_length=30, choices=TYPE_CHOICES)
+    content = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name_plural = "activities"
+
+    def __str__(self):
+        return f"{self.get_activity_type_display()} – {self.contact.name}"
+
+
+def log_activity(contact, activity_type, content=""):
+    return Activity.objects.create(
+        contact=contact, activity_type=activity_type, content=content
+    )
 
 
 class SearchProfile(models.Model):

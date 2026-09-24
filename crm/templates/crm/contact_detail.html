@@ -29,6 +29,9 @@
                             {% if contact.status == 'dead' %}bg-red-100 text-red-800{% endif %}">
                             {{ contact.get_status_display }}
                         </span>
+                        {% if contact.status == 'dead' and contact.dead_reason %}
+                        <span class="text-sm text-gray-500 italic">{{ contact.dead_reason }}</span>
+                        {% endif %}
                         <span class="text-sm text-gray-600">{{ contact.get_platform_display }}</span>
                         {% if contact.business %}
                         <span class="px-3 py-1 text-sm rounded-full bg-gray-100 text-gray-800">📁 {{ contact.get_business_display }}</span>
@@ -47,7 +50,7 @@
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
                 <div class="bg-gray-50 p-4 rounded">
                     <h3 class="font-medium text-gray-700 text-sm">Handle</h3>
                     {% if contact.profile_url %}
@@ -71,6 +74,23 @@
                         </p>
                     {% else %}
                         <p class="text-gray-500 italic">None set</p>
+                    {% endif %}
+                </div>
+                <div class="bg-gray-50 p-4 rounded">
+                    <h3 class="font-medium text-gray-700 text-sm">Next check-in</h3>
+                    {% if contact.next_touch_date %}
+                        <p class="{% if contact.next_touch_date < today %}text-red-600 font-medium{% endif %}">
+                            {{ contact.next_touch_date|date:"M d, Y" }}
+                            {% if contact.next_touch_date < today %}<span class="text-sm">(overdue)</span>{% endif %}
+                        </p>
+                        {% if contact.next_touch_note %}<p class="text-xs text-gray-500">{{ contact.next_touch_note }}</p>{% endif %}
+                        <form method="post" action="{% url 'crm:check_in_done' contact.id %}" class="mt-1">
+                            {% csrf_token %}
+                            <button type="submit" class="text-xs text-indigo-600 hover:text-indigo-800">Mark done</button>
+                        </form>
+                    {% else %}
+                        <p class="text-gray-500 italic">None set</p>
+                        <a href="{% url 'crm:contact_edit' contact.id %}" class="text-xs text-indigo-600 hover:text-indigo-800">Set one →</a>
                     {% endif %}
                 </div>
             </div>
@@ -129,35 +149,90 @@
             {% endif %}
         </div>
 
-        <!-- Interaction history -->
+        <!-- Purchase history -->
+        <div class="p-6 border-b">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold text-gray-800">Purchases</h2>
+                <a href="{% url 'crm:purchase_create' contact.id %}" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold py-1 px-3 rounded">Add Purchase</a>
+            </div>
+
+            {% if contact.purchases.exists %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for purchase in contact.purchases.all %}
+                        <tr>
+                            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-600">{{ purchase.date|date:"M d, Y" }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-800">{{ purchase.product }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-800">&pound;{{ purchase.amount|floatformat:2 }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{{ purchase.get_source_display }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-8 bg-gray-50 rounded">
+                <p class="text-gray-500">No purchases logged yet.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Unified timeline: interactions, purchases, and system activity -->
         <div class="p-6">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold text-gray-800">Interaction History</h2>
+                <h2 class="text-xl font-semibold text-gray-800">Timeline</h2>
                 <a href="{% url 'crm:interaction_create' contact.id %}" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold py-1 px-3 rounded">Log Interaction</a>
             </div>
 
-            {% if contact.interactions.exists %}
+            {% if timeline %}
             <div class="space-y-4">
-                {% for interaction in contact.interactions.all %}
-                <div class="border-l-4 {% if interaction.direction == 'outbound' %}border-indigo-400{% else %}border-green-400{% endif %} bg-gray-50 rounded-r p-4">
+                {% for row in timeline %}
+                {% if row.kind == 'interaction' %}
+                <div class="border-l-4 {% if row.obj.direction == 'outbound' %}border-indigo-400{% else %}border-green-400{% endif %} bg-gray-50 rounded-r p-4">
                     <div class="flex justify-between items-center mb-1">
                         <span class="text-sm font-medium text-gray-700">
-                            {{ interaction.get_direction_display }} · {{ interaction.get_channel_display }}
+                            {{ row.obj.get_direction_display }} · {{ row.obj.get_channel_display }}
                         </span>
-                        <span class="text-xs text-gray-500">{{ interaction.date|date:"M d, Y" }}</span>
+                        <span class="text-xs text-gray-500">{{ row.obj.date|date:"M d, Y" }}</span>
                     </div>
-                    <p class="text-gray-800 whitespace-pre-line">{{ interaction.message }}</p>
-                    {% if interaction.image %}
-                    <a href="{{ interaction.image.url }}" target="_blank" rel="noopener noreferrer">
-                        <img src="{{ interaction.image.url }}" alt="Screenshot" class="mt-3 rounded border border-gray-200 max-h-64">
+                    <p class="text-gray-800 whitespace-pre-line">{{ row.obj.message }}</p>
+                    {% if row.obj.image %}
+                    <a href="{{ row.obj.image.url }}" target="_blank" rel="noopener noreferrer">
+                        <img src="{{ row.obj.image.url }}" alt="Screenshot" class="mt-3 rounded border border-gray-200 max-h-64">
                     </a>
                     {% endif %}
                 </div>
+                {% elif row.kind == 'purchase' %}
+                <div class="border-l-4 border-green-500 bg-green-50 rounded-r p-4">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-sm font-medium text-gray-700">💰 Purchase: {{ row.obj.product }}</span>
+                        <span class="text-xs text-gray-500">{{ row.obj.date|date:"M d, Y" }}</span>
+                    </div>
+                    <p class="text-gray-800">&pound;{{ row.obj.amount|floatformat:2 }} · {{ row.obj.get_source_display }}</p>
+                </div>
+                {% else %}
+                <div class="border-l-4 border-gray-300 bg-gray-50 rounded-r p-4">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-sm font-medium text-gray-700">{{ row.obj.get_activity_type_display }}</span>
+                        <span class="text-xs text-gray-500">{{ row.obj.created_at|date:"M d, Y" }}</span>
+                    </div>
+                    {% if row.obj.content %}<p class="text-gray-800">{{ row.obj.content }}</p>{% endif %}
+                </div>
+                {% endif %}
                 {% endfor %}
             </div>
             {% else %}
             <div class="text-center py-8 bg-gray-50 rounded">
-                <p class="text-gray-500">No interactions logged yet. Click "Log Interaction" to record what you said.</p>
+                <p class="text-gray-500">Nothing logged yet. Click "Log Interaction" to record what you said.</p>
             </div>
             {% endif %}
         </div>

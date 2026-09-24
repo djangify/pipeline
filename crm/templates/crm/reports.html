@@ -1,0 +1,100 @@
+<!-- crm/templates/crm/reports.html -->
+{% extends 'base.html' %}
+{% block title %}Reports - Pipeline{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold text-gray-800">Reports</h1>
+        <a href="{% url 'crm:contact_list' %}" class="text-indigo-600 hover:text-indigo-800">All contacts →</a>
+    </div>
+
+    <!-- Date range -->
+    <div class="bg-white shadow rounded-lg mb-6 p-4">
+        <form method="get" class="flex flex-wrap items-end gap-4">
+            <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">From</label>
+                <input type="date" name="start" value="{{ start|date:'Y-m-d' }}"
+                    class="border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">To</label>
+                <input type="date" name="end" value="{{ end|date:'Y-m-d' }}"
+                    class="border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+            </div>
+            <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">Update</button>
+        </form>
+    </div>
+
+    <!-- KPIs -->
+    <div class="mb-6" style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1rem;">
+        <div class="bg-white shadow rounded-lg p-4">
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">New Contacts</p>
+            <p class="text-3xl font-bold text-gray-800 mt-1">{{ kpis.new_contacts }}</p>
+        </div>
+        <div class="bg-white shadow rounded-lg p-4">
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">Messages Sent</p>
+            <p class="text-3xl font-bold text-gray-800 mt-1">{{ kpis.messages_sent }}</p>
+        </div>
+        <div class="bg-white shadow rounded-lg p-4">
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">Responses</p>
+            <p class="text-3xl font-bold text-gray-800 mt-1">{{ kpis.responses }}</p>
+            <p class="text-xs text-gray-400 mt-1">{{ kpis.response_rate }}% reply rate</p>
+        </div>
+        <div class="bg-white shadow rounded-lg p-4">
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">Purchases</p>
+            <p class="text-3xl font-bold text-green-600 mt-1">{{ kpis.purchases }}</p>
+        </div>
+        <div class="bg-white shadow rounded-lg p-4">
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">Revenue</p>
+            <p class="text-3xl font-bold text-green-600 mt-1">&pound;{{ kpis.revenue|floatformat:2 }}</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Revenue by month -->
+        <div class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Revenue by month</h2>
+            {% if revenue_by_month %}
+            <svg viewBox="0 0 {{ chart_width }} {{ chart_height|add:30 }}" width="100%" height="200" class="overflow-visible">
+                {% for row in revenue_by_month %}
+                <rect x="{{ row.x }}" y="{{ row.y }}" width="{{ bar_width }}" height="{{ row.bar_height }}" rx="3" fill="#6366f1"></rect>
+                <text x="{{ row.x|add:24 }}" y="{{ row.y|add:-6 }}" font-size="10" text-anchor="middle" fill="#374151">&pound;{{ row.value|floatformat:0 }}</text>
+                <text x="{{ row.x|add:24 }}" y="{{ chart_height|add:16 }}" font-size="10" text-anchor="middle" fill="#6b7280">{{ row.label }}</text>
+                {% endfor %}
+            </svg>
+            {% else %}
+            <p class="text-gray-500 text-sm">No purchases in this range.</p>
+            {% endif %}
+        </div>
+
+        <!-- Leads by platform -->
+        <div class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Leads by platform ({{ total_leads }})</h2>
+            {% if platform_segments %}
+            <div class="flex items-center gap-6">
+                <svg viewBox="0 0 42 42" class="w-32 h-32 shrink-0">
+                    <circle cx="21" cy="21" r="15.9155" fill="none" stroke="#e5e7eb" stroke-width="4"></circle>
+                    {% for seg in platform_segments %}
+                    <circle cx="21" cy="21" r="15.9155" fill="none" stroke="{{ seg.color }}" stroke-width="4"
+                        stroke-dasharray="{{ seg.dasharray }}" stroke-dashoffset="{{ seg.dashoffset }}"
+                        transform="rotate(-90 21 21)"></circle>
+                    {% endfor %}
+                </svg>
+                <ul class="space-y-1 text-sm">
+                    {% for seg in platform_segments %}
+                    <li class="flex items-center gap-2">
+                        <span class="inline-block w-3 h-3 rounded-full" style="background-color: {{ seg.color }};"></span>
+                        <span class="text-gray-700">{{ seg.label }}</span>
+                        <span class="text-gray-400">{{ seg.count }} ({{ seg.pct }}%)</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% else %}
+            <p class="text-gray-500 text-sm">No contacts in this range.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
