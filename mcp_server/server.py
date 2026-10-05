@@ -34,7 +34,7 @@ from django.db.models import Q
 from django.utils import timezone
 from mcp.server.fastmcp import FastMCP
 
-from crm.models import Contact, Purchase, SearchProfile
+from crm.models import Contact, FollowUpTemplate, Interaction, Purchase, SearchProfile
 from research.models import BUSINESS_CHOICES as RESEARCH_BUSINESS_CHOICES
 from research.models import CompetitorAd, Keyword, PainTheme
 
@@ -96,7 +96,18 @@ INSTRUCTIONS = (
     "business+term or business+theme); create_competitor_ad checks for an "
     "existing ad with the same business, competitor and angle first. Same "
     "public-data-only rule applies: only what's already public (ad libraries, "
-    "public reviews, public forum threads), nothing behind a login."
+    "public reviews, public forum threads), nothing behind a login.\n\n"
+    "INTERACTIONS. Log actual DMs/comments/emails/calls against a contact with "
+    "create_interaction; list_interactions and update_interaction cover the "
+    "rest. Only log interactions that really happened -- never fabricate one.\n\n"
+    "FOLLOW-UP TEMPLATES. The three reusable follow-up messages (stage 1/2/3) "
+    "are managed with list_followup_templates and upsert_followup_template.\n\n"
+    "DELETING. Every resource here (contacts, purchases, interactions, search "
+    "profiles, competitor ads, keywords, pain themes, follow-up templates) has "
+    "a delete tool. Deletes are permanent, so each one returns the record "
+    "instead of deleting it unless you pass confirm=True -- check it's the "
+    "right one first, and don't pass confirm=True unless the owner actually "
+    "asked for that specific thing to be removed."
 )
 
 mcp = FastMCP("pipeline", instructions=INSTRUCTIONS)
@@ -545,6 +556,27 @@ def update_contact(
 
 
 @mcp.tool()
+def delete_contact(contact_id: int, confirm: bool = False) -> dict:
+    """Permanently delete a contact, along with everything tied to it
+    (interactions, purchases, activity history). This cannot be undone. Call
+    with confirm=False (or omitted) first to see who this is before deleting;
+    pass confirm=True only once the owner has confirmed it's the right
+    person."""
+    try:
+        c = Contact.objects.get(pk=contact_id)
+    except Contact.DoesNotExist:
+        return {"error": f"No contact with id {contact_id}."}
+    if not confirm:
+        return {
+            "error": "Not deleted: pass confirm=True to permanently delete this contact.",
+            "contact": _contact_dict(c, full=True),
+        }
+    summary = _contact_dict(c, full=True)
+    c.delete()
+    return {"deleted": summary}
+
+
+@mcp.tool()
 def list_followups_due(days_ahead: int = 0, business: str = "", include_upcoming: bool = False) -> dict:
     """Contacts whose next follow-up is due: follow_up_date on or before today
     + days_ahead (0 = due today or overdue), with at least one follow-up stage
@@ -680,6 +712,219 @@ def create_purchase(
     }
 
 
+@mcp.tool()
+def get_purchase(purchase_id: int) -> dict:
+    """Full details of one purchase."""
+    try:
+        p = Purchase.objects.select_related("contact").get(pk=purchase_id)
+    except Purchase.DoesNotExist:
+        return {"error": f"No purchase with id {purchase_id}."}
+    return _purchase_dict(p)
+
+
+@mcp.tool()
+def update_purchase(
+    purchase_id: int,
+    product: str = "",
+    amount: str = "",
+    date: str = "",
+    source: str = "",
+    external_order_id: str | None = None,
+    notes: str | None = None,
+) -> dict:
+    """Correct a logged purchase (e.g. a typo'd amount or product). Any
+    argument left out is kept as-is. Re-syncs the contact's made_purchase/
+    revenue totals afterwards -- never set those two fields directly."""
+    try:
+        p = Purchase.objects.select_related("contact").get(pk=purchase_id)
+    except Purchase.DoesNotExist:
+        return {"error": f"No purchase with id {purchase_id}."}
+    changed = []
+    if product.strip():
+        p.product = product.strip()
+        changed.append("product")
+    if amount.strip():
+        try:
+            p.amount = Decimal(amount.strip())
+        except InvalidOperation:
+            return {"error": f"amount must be a number, got '{amount}'"}
+        changed.append("amount")
+    if date.strip():
+        try:
+            p.date = _parse_date(date, "date")
+        except ValueError as exc:
+            return {"error": str(exc)}
+        changed.append("date")
+    if source.strip():
+        try:
+            p.source = _resolve_choice(source, Purchase.SOURCE_CHOICES, "source")
+        except ValueError as exc:
+            return {"error": str(exc)}
+        changed.append("source")
+    if external_order_id is not None:
+        p.external_order_id = external_order_id.strip() or None
+        changed.append("external_order_id")
+    if notes is not None:
+        p.notes = notes.strip()
+        changed.append("notes")
+    if not changed:
+        return {"error": "Nothing to update: pass product, amount, date, source, external_order_id or notes."}
+    try:
+        p.full_clean()
+    except Exception as exc:
+        return {"error": f"Not saved: {exc}"}
+    p.save()
+    p.contact.refresh_from_db()
+    return {"updated_fields": changed, "purchase": _purchase_dict(p)}
+
+
+@mcp.tool()
+def delete_purchase(purchase_id: int, confirm: bool = False) -> dict:
+    """Permanently delete a purchase (e.g. it was logged in error or a
+    duplicate). Re-syncs the contact's made_purchase/revenue totals
+    afterwards. Call with confirm=False first to review it; confirm=True to
+    actually delete."""
+    try:
+        p = Purchase.objects.select_related("contact").get(pk=purchase_id)
+    except Purchase.DoesNotExist:
+        return {"error": f"No purchase with id {purchase_id}."}
+    if not confirm:
+        return {
+            "error": "Not deleted: pass confirm=True to permanently delete this purchase.",
+            "purchase": _purchase_dict(p),
+        }
+    summary = _purchase_dict(p)
+    p.delete()
+    return {"deleted": summary}
+
+
+# --- interactions ---------------------------------------------------------------
+
+def _interaction_dict(i: Interaction) -> dict:
+    return {
+        "id": i.id,
+        "contact_id": i.contact_id,
+        "contact_name": i.contact.name,
+        "date": i.date.isoformat(),
+        "channel": i.channel,
+        "direction": i.direction,
+        "message": i.message,
+        "created_at": i.created_at.isoformat(timespec="seconds"),
+    }
+
+
+@mcp.tool()
+def list_interactions(contact_id: int | None = None, business: str = "", limit: int = 50) -> dict:
+    """List logged interactions (DMs, comments, emails, calls, meetings),
+    newest first. Filter by contact_id, or by business to see interactions
+    across everyone tied to that business."""
+    qs = Interaction.objects.select_related("contact").all()
+    if contact_id is not None:
+        qs = qs.filter(contact_id=contact_id)
+    if business:
+        try:
+            key = _resolve_choice(business, Contact.BUSINESS_CHOICES, "business")
+        except ValueError as exc:
+            return {"error": str(exc)}
+        qs = qs.filter(contact__business=key)
+    rows = [_interaction_dict(i) for i in qs[: max(1, min(int(limit or 50), 200))]]
+    return {"count": len(rows), "interactions": rows}
+
+
+@mcp.tool()
+def create_interaction(
+    contact_id: int,
+    message: str,
+    direction: str = "outbound",
+    channel: str = "dm",
+    date: str = "",
+) -> dict:
+    """Log a DM/comment/email/call/meeting against an existing contact. Only
+    log something that actually happened -- never fabricate an interaction.
+    direction: 'outbound' (you reached out) or 'inbound' (they reached out).
+    channel: dm / comment / email / call / meeting / other. date: YYYY-MM-DD,
+    defaults to today."""
+    try:
+        c = Contact.objects.get(pk=contact_id)
+    except Contact.DoesNotExist:
+        return {"error": f"No contact with id {contact_id}."}
+    message = (message or "").strip()
+    if not message:
+        return {"error": "message is required."}
+    try:
+        direction_key = _resolve_choice(direction or "outbound", Interaction.DIRECTION_CHOICES, "direction")
+        channel_key = _resolve_choice(channel or "dm", Interaction.CHANNEL_CHOICES, "channel")
+        when = _parse_date(date, "date") if date else timezone.localdate()
+    except ValueError as exc:
+        return {"error": str(exc)}
+    interaction = Interaction(
+        contact=c, date=when, channel=channel_key, direction=direction_key, message=message
+    )
+    try:
+        interaction.full_clean()
+    except Exception as exc:
+        return {"error": f"Not saved: {exc}"}
+    interaction.save()
+    return {"created": _interaction_dict(interaction)}
+
+
+@mcp.tool()
+def update_interaction(
+    interaction_id: int,
+    message: str | None = None,
+    direction: str = "",
+    channel: str = "",
+    date: str = "",
+) -> dict:
+    """Correct a logged interaction. Any argument left out is kept as-is."""
+    try:
+        i = Interaction.objects.select_related("contact").get(pk=interaction_id)
+    except Interaction.DoesNotExist:
+        return {"error": f"No interaction with id {interaction_id}."}
+    changed = []
+    try:
+        if direction:
+            i.direction = _resolve_choice(direction, Interaction.DIRECTION_CHOICES, "direction")
+            changed.append("direction")
+        if channel:
+            i.channel = _resolve_choice(channel, Interaction.CHANNEL_CHOICES, "channel")
+            changed.append("channel")
+        if date:
+            i.date = _parse_date(date, "date")
+            changed.append("date")
+    except ValueError as exc:
+        return {"error": str(exc)}
+    if message is not None:
+        i.message = message.strip()
+        changed.append("message")
+    if not changed:
+        return {"error": "Nothing to update: pass message, direction, channel or date."}
+    try:
+        i.full_clean()
+    except Exception as exc:
+        return {"error": f"Not saved: {exc}"}
+    i.save()
+    return {"updated_fields": changed, "interaction": _interaction_dict(i)}
+
+
+@mcp.tool()
+def delete_interaction(interaction_id: int, confirm: bool = False) -> dict:
+    """Permanently delete a logged interaction. Call with confirm=False first
+    to review it; confirm=True to actually delete."""
+    try:
+        i = Interaction.objects.select_related("contact").get(pk=interaction_id)
+    except Interaction.DoesNotExist:
+        return {"error": f"No interaction with id {interaction_id}."}
+    if not confirm:
+        return {
+            "error": "Not deleted: pass confirm=True to permanently delete this interaction.",
+            "interaction": _interaction_dict(i),
+        }
+    summary = _interaction_dict(i)
+    i.delete()
+    return {"deleted": summary}
+
+
 # --- search profiles ------------------------------------------------------------
 
 def _get_profile(business: str) -> SearchProfile | None:
@@ -786,6 +1031,26 @@ def update_search_profile(
         return {"error": f"Not saved: {exc}"}
     p.save()
     return {"updated": _profile_dict(p)}
+
+
+@mcp.tool()
+def delete_search_profile(business: str, confirm: bool = False) -> dict:
+    """Permanently delete a business's search profile. Call with confirm=False
+    first to review it; confirm=True to actually delete."""
+    try:
+        p = _get_profile(business)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    if p is None:
+        return {"error": f"No search profile for '{business}'."}
+    if not confirm:
+        return {
+            "error": "Not deleted: pass confirm=True to permanently delete this search profile.",
+            "profile": _profile_dict(p),
+        }
+    summary = _profile_dict(p)
+    p.delete()
+    return {"deleted": summary}
 
 
 # --- research: competitor ads, keywords, pain themes -------------------------
@@ -916,6 +1181,93 @@ def create_competitor_ad(
 
 
 @mcp.tool()
+def get_competitor_ad(ad_id: int) -> dict:
+    """Full details of one competitor ad."""
+    try:
+        a = CompetitorAd.objects.get(pk=ad_id)
+    except CompetitorAd.DoesNotExist:
+        return {"error": f"No competitor ad with id {ad_id}."}
+    return _ad_dict(a)
+
+
+@mcp.tool()
+def update_competitor_ad(
+    ad_id: int,
+    business: str = "",
+    platform: str = "",
+    competitor_name: str = "",
+    headline: str | None = None,
+    angle: str = "",
+    ad_copy: str | None = None,
+    link: str | None = None,
+    date_pulled: str = "",
+    notes: str | None = None,
+) -> dict:
+    """Correct a logged competitor ad. Any argument left out is kept as-is."""
+    try:
+        a = CompetitorAd.objects.get(pk=ad_id)
+    except CompetitorAd.DoesNotExist:
+        return {"error": f"No competitor ad with id {ad_id}."}
+    changed = []
+    try:
+        if business:
+            a.business = _resolve_choice(business, RESEARCH_BUSINESS_CHOICES, "business")
+            changed.append("business")
+        if platform:
+            a.platform = _resolve_choice(platform, CompetitorAd.PLATFORM_CHOICES, "platform")
+            changed.append("platform")
+        if date_pulled:
+            a.date_pulled = _parse_date(date_pulled, "date_pulled")
+            changed.append("date_pulled")
+    except ValueError as exc:
+        return {"error": str(exc)}
+    if competitor_name.strip():
+        a.competitor_name = competitor_name.strip()
+        changed.append("competitor_name")
+    if angle.strip():
+        a.angle = angle.strip()
+        changed.append("angle")
+    if headline is not None:
+        a.headline = headline.strip()
+        changed.append("headline")
+    if ad_copy is not None:
+        a.ad_copy = ad_copy.strip()
+        changed.append("ad_copy")
+    if link is not None:
+        a.link = link.strip()
+        changed.append("link")
+    if notes is not None:
+        a.notes = notes.strip()
+        changed.append("notes")
+    if not changed:
+        return {"error": "Nothing to update: pass business, platform, competitor_name, headline, angle, ad_copy, link, date_pulled or notes."}
+    try:
+        a.full_clean()
+    except Exception as exc:
+        return {"error": f"Not saved: {exc}"}
+    a.save()
+    return {"updated_fields": changed, "ad": _ad_dict(a)}
+
+
+@mcp.tool()
+def delete_competitor_ad(ad_id: int, confirm: bool = False) -> dict:
+    """Permanently delete a competitor ad. Call with confirm=False first to
+    review it; confirm=True to actually delete."""
+    try:
+        a = CompetitorAd.objects.get(pk=ad_id)
+    except CompetitorAd.DoesNotExist:
+        return {"error": f"No competitor ad with id {ad_id}."}
+    if not confirm:
+        return {
+            "error": "Not deleted: pass confirm=True to permanently delete this competitor ad.",
+            "ad": _ad_dict(a),
+        }
+    summary = _ad_dict(a)
+    a.delete()
+    return {"deleted": summary}
+
+
+@mcp.tool()
 def list_keywords(business: str = "", limit: int = 100) -> dict:
     """List keyword research, grouped by business then term. Filter by
     business (djangify / inspirational_guidance / self_talk_effect / todiane /
@@ -969,6 +1321,34 @@ def upsert_keyword(
         return {"error": f"Not saved: {exc}"}
     keyword.save()
     return {"created" if created else "updated": _keyword_dict(keyword)}
+
+
+@mcp.tool()
+def get_keyword(keyword_id: int) -> dict:
+    """Full details of one keyword research row."""
+    try:
+        k = Keyword.objects.get(pk=keyword_id)
+    except Keyword.DoesNotExist:
+        return {"error": f"No keyword with id {keyword_id}."}
+    return _keyword_dict(k)
+
+
+@mcp.tool()
+def delete_keyword(keyword_id: int, confirm: bool = False) -> dict:
+    """Permanently delete a keyword research row. Call with confirm=False
+    first to review it; confirm=True to actually delete."""
+    try:
+        k = Keyword.objects.get(pk=keyword_id)
+    except Keyword.DoesNotExist:
+        return {"error": f"No keyword with id {keyword_id}."}
+    if not confirm:
+        return {
+            "error": "Not deleted: pass confirm=True to permanently delete this keyword.",
+            "keyword": _keyword_dict(k),
+        }
+    summary = _keyword_dict(k)
+    k.delete()
+    return {"deleted": summary}
 
 
 @mcp.tool()
@@ -1029,6 +1409,83 @@ def upsert_pain_theme(
         return {"error": f"Not saved: {exc}"}
     pain_theme.save()
     return {"created" if created else "updated": _pain_theme_dict(pain_theme)}
+
+
+@mcp.tool()
+def get_pain_theme(pain_theme_id: int) -> dict:
+    """Full details of one pain theme."""
+    try:
+        t = PainTheme.objects.get(pk=pain_theme_id)
+    except PainTheme.DoesNotExist:
+        return {"error": f"No pain theme with id {pain_theme_id}."}
+    return _pain_theme_dict(t)
+
+
+@mcp.tool()
+def delete_pain_theme(pain_theme_id: int, confirm: bool = False) -> dict:
+    """Permanently delete a pain theme. Call with confirm=False first to
+    review it; confirm=True to actually delete."""
+    try:
+        t = PainTheme.objects.get(pk=pain_theme_id)
+    except PainTheme.DoesNotExist:
+        return {"error": f"No pain theme with id {pain_theme_id}."}
+    if not confirm:
+        return {
+            "error": "Not deleted: pass confirm=True to permanently delete this pain theme.",
+            "pain_theme": _pain_theme_dict(t),
+        }
+    summary = _pain_theme_dict(t)
+    t.delete()
+    return {"deleted": summary}
+
+
+# --- follow-up templates -------------------------------------------------------
+
+def _followup_template_dict(t: FollowUpTemplate) -> dict:
+    return {"id": t.id, "stage": t.stage, "stage_label": t.get_stage_display(), "message": t.message}
+
+
+@mcp.tool()
+def list_followup_templates() -> dict:
+    """The three reusable follow-up messages (stage 1, 2 and 3) suggested when
+    a contact's next open follow-up stage comes due."""
+    return {"templates": [_followup_template_dict(t) for t in FollowUpTemplate.objects.all()]}
+
+
+@mcp.tool()
+def upsert_followup_template(stage: int, message: str) -> dict:
+    """Create or replace the reusable message for a follow-up stage (1, 2 or
+    3). Safe to call again for the same stage -- updates it instead of
+    duplicating it."""
+    if stage not in (1, 2, 3):
+        return {"error": "stage must be 1, 2 or 3."}
+    message = (message or "").strip()
+    if not message:
+        return {"error": "message is required."}
+    template, created = FollowUpTemplate.objects.get_or_create(stage=stage, defaults={"message": message})
+    if not created:
+        template.message = message
+        template.save()
+    return {"created" if created else "updated": _followup_template_dict(template)}
+
+
+@mcp.tool()
+def delete_followup_template(stage: int, confirm: bool = False) -> dict:
+    """Permanently delete the reusable message for a follow-up stage (1, 2 or
+    3). Call with confirm=False first to review it; confirm=True to actually
+    delete."""
+    try:
+        t = FollowUpTemplate.objects.get(stage=stage)
+    except FollowUpTemplate.DoesNotExist:
+        return {"error": f"No follow-up template for stage {stage}."}
+    if not confirm:
+        return {
+            "error": "Not deleted: pass confirm=True to permanently delete this follow-up template.",
+            "template": _followup_template_dict(t),
+        }
+    summary = _followup_template_dict(t)
+    t.delete()
+    return {"deleted": summary}
 
 
 if __name__ == "__main__":
