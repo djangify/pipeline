@@ -5,32 +5,51 @@ other channel), track them through a status pipeline, and never lose track of
 a follow-up.
 
 Everything stays on your own computer: one SQLite database, no account, no
-cloud service. Pipeline is free software under the [MIT licence](LICENSE).
+cloud service. Free and open source under the MIT license (see `LICENSE.txt`).
+
+## Start here: the guides
+
+Plain-language guides for people who just want to use Pipeline. Each is in
+`docs/` as a PDF and as a plain text file:
+
+| Guide | What it covers |
+|---|---|
+| `docs/Pipeline-Setup-Guide` | Full guide: download, install, first login, everyday use, Claude connector, backups, password reset, troubleshooting |
+| `docs/HOW-TO-OPEN-PIPELINE` | One page: unzip it, double-click it, log in |
+| `docs/LICENSE.pdf`, `LICENSE.txt` | The MIT license |
+| `docs/THIRD_PARTY_NOTICES` | Licenses of the open source packages the app bundles |
+
+This README is the short version for developers and for the repository front page.
 
 ## What it does
 
-- **Contacts** — name, platform found on, social handle/profile link, email,
-  a status pipeline (new → contacted → replied → in conversation → converted
-  / dead), which of your businesses or projects they relate to (free text), tags, notes.
-- **Follow-ups** — 3 dated follow-up stages per contact; ticking a stage
+- **Contacts**: name, platform found on, social handle/profile link, email,
+  a status pipeline (new, contacted, replied, in conversation, converted,
+  dead), which of your businesses or projects they relate to (free text), tags, notes.
+- **Follow-ups**: 3 dated follow-up stages per contact; ticking a stage
   auto-schedules the next one 2 days out. A dedicated Follow-ups view lists
   everything due or overdue.
-- **Interactions** — a timestamped log of every DM/comment/email/call per
+- **Interactions**: a timestamped log of every DM/comment/email/call per
   contact, with an optional screenshot.
-- **Dashboard totals** — messages sent, reply rate, email-list signups,
-  sales and revenue, all on the contacts list.
-- **Follow-up email reminders** — `python manage.py followup_reminders`
-  emails whatever's due today. Point cron at it and set `FOLLOWUP_REMINDER_TO`
-  in `.env`.
+- **Purchases and check-ins**: log what a contact bought and schedule a
+  post-sale check-in.
+- **Dashboard and reports**: messages sent, reply rate, email-list signups,
+  sales and revenue, plus date-ranged reports and charts.
+- **Research**: pain themes, competitor ads and keywords per business.
+- **CSV import and export**, with every imported row validated.
+- **Follow-up email reminders**: `python manage.py followup_reminders` emails
+  whatever's due today. Set `FOLLOWUP_REMINDER_TO` and the `EMAIL_` settings in
+  `.env` (see `.env.example`), and point Task Scheduler or cron at it.
 - A small REST API (Django REST Framework) at `/api/contacts/` and
-  `/api/interactions/`, for future automation.
+  `/api/interactions/`, for automation.
 
 ## Claude Desktop connector (MCP)
 
-`mcp_server/` exposes Pipeline to Claude Desktop over stdio (optional). Tools: `list_contacts`, `find_contact`
-(dedup lookup by name / website / email / handle), `get_contact`,
-`create_contact` (refuses exact duplicates), `update_contact`,
-`list_followups_due`, and `list/get/create/update_search_profile`.
+`mcp_server/` exposes Pipeline to Claude Desktop over stdio (optional). Tools:
+`list_contacts`, `find_contact` (dedup lookup by name / website / email /
+handle), `get_contact`, `create_contact` (refuses exact duplicates),
+`update_contact`, `list_followups_due`, search profiles, purchases,
+interactions and research tools.
 
 A **SearchProfile** (one per business name, edit in the admin or via Claude) holds
 who to look for and comma-separated signal phrases, including complaint/intent
@@ -49,15 +68,14 @@ saying why they fit. Outreach is left to you.
 
 ## What you need
 
-- **Python 3.10 or newer** (3.13 is what it is developed on) and `git`.
+- **Python 3.10 or newer** (3.13 is what it is developed on) and `git`, to run
+  from source.
 - **Windows 10/11** for the desktop app (`Pipeline.exe`), which also needs the
   Microsoft WebView2 runtime (already present on current Windows 11 and most
   Windows 10 machines). `build_exe.bat` builds it and is Windows-only.
 - **Windows, macOS or Linux** for running from source in a browser.
 - No internet connection is needed to run Pipeline. The page styling is a
   compiled file shipped in the repo (`static/css/output.css`).
-- **Node.js** is only needed if you change the styling or build the `.exe`
-  (see Notes).
 
 ## Running it from source
 
@@ -71,6 +89,7 @@ pipelinevenv\Scripts\activate
 pip install -r requirements.txt
 copy .env.example .env
 python manage.py migrate
+python manage.py create_default_user
 python manage.py runserver
 ```
 
@@ -84,11 +103,15 @@ source pipelinevenv/bin/activate
 pip install -r requirements.txt   # pywin32 and the Windows-only parts are skipped automatically
 cp .env.example .env
 python manage.py migrate
+python manage.py create_default_user
 python manage.py runserver
 ```
 
-Then visit `http://127.0.0.1:8000/`. The first time, Pipeline shows a setup
-page where you choose your own email and password. There is no default login.
+`create_default_user` prints your login and a random password (and saves them in
+`first_login.txt` in the data folder). Open `http://127.0.0.1:8000/`, log in,
+then click **Change password**; the file is deleted when you do. If you skip
+that command, the first visit shows a setup page where you choose your own
+email and password instead. There is no built-in default password.
 
 If port 8000 is already in use, run `python manage.py runserver 8001` and visit
 that port instead.
@@ -105,22 +128,38 @@ Windows app and silently redirects AppData for anything it launches, so the
 app window and the Claude connector would otherwise each get their own
 database (research saved by Claude would never appear in the app).
 
-## Logins: every user must be a superuser
+Running from source uses a separate database in `data\db\db.sqlite3` inside the
+project. A user added in one does not exist in the other. To point source
+commands at the desktop app's database, set `PIPELINE_DATA_DIR` first
+(PowerShell): `$env:PIPELINE_DATA_DIR = "$env:USERPROFILE\Pipeline Data"`.
 
-**Whenever you set up a new user, give them superuser access.** Pipeline is a
-single-owner tool and Django admin (the Admin link, search profiles, raw
-research data) only lets in staff users. A normal user gets bounced to the
-admin login page, which looks exactly like being logged out.
+## Logins and passwords
 
-- **First login:** the setup page creates it for you, already a superuser.
-- **More users from the command line:** always use
-  `python manage.py createsuperuser`, never `create_user`.
-- **In the admin (Admin → Users → Add user):** after saving, tick both
-  **Staff status** and **Superuser status** on the next screen, then save again.
+- **First login:** created with a random password (see above). Change it under
+  **Change password**.
+- **Forgotten password:** close the app and run `Pipeline-Reset-Password.bat`
+  (next to `Pipeline.exe`), or `python manage.py create_default_user --reset` from
+  source. It sets a new random password and leaves your data alone.
+- **Every user must be a superuser.** Pipeline is a single-owner tool and Django
+  admin only lets in staff users. A normal user gets bounced to the admin login
+  page, which looks exactly like being logged out. Add more users with
+  `python manage.py createsuperuser`, or in Admin after saving tick both
+  **Staff status** and **Superuser status**.
 
-There is no built-in default account. Full steps, including how to upgrade an
-existing login and how to run these commands against the packaged app's
-database, are in [docs/USERS.md](docs/USERS.md).
+## Building the Windows app
+
+```bat
+build_exe.bat
+```
+
+Installs the pinned requirements and PyInstaller, compiles the stylesheet when
+Node.js is installed, builds `dist\Pipeline\` and copies the guides, the license
+and `Pipeline-Reset-Password.bat` next to `Pipeline.exe`. Ship the whole folder.
+
+## Changing the guides
+
+The wording is in `tools/docs_content.py`. Run `python tools/build_docs.py`
+(needs `pip install reportlab==4.4.4`) to rebuild the PDF and text files in `docs/`.
 
 ## Notes
 
@@ -135,6 +174,6 @@ database, are in [docs/USERS.md](docs/USERS.md).
 - CSV import checks every row like the Add Contact form does. Rows that fail
   are skipped and the first few problems are shown by row number.
 
-## Licence
+## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See `LICENSE.txt`.

@@ -76,6 +76,18 @@ if errorlevel 1 (
     exit /b 1
 )
 
+:: -----------------------------------------------
+:: GUIDES, LICENSE AND RESET SCRIPT (shipped next to Pipeline.exe)
+:: -----------------------------------------------
+copy /Y LICENSE.txt dist\Pipeline\LICENSE.txt >nul
+copy /Y Pipeline-Reset-Password.bat dist\Pipeline\Pipeline-Reset-Password.bat >nul
+copy /Y docs\HOW-TO-OPEN-PIPELINE.pdf dist\Pipeline\ >nul
+copy /Y docs\HOW-TO-OPEN-PIPELINE.txt dist\Pipeline\ >nul
+copy /Y docs\Pipeline-Setup-Guide.pdf dist\Pipeline\ >nul
+copy /Y docs\Pipeline-Setup-Guide.txt dist\Pipeline\ >nul
+copy /Y docs\THIRD_PARTY_NOTICES.pdf dist\Pipeline\ >nul
+copy /Y docs\THIRD_PARTY_NOTICES.txt dist\Pipeline\ >nul
+
 echo.
 echo  =============================================
 echo   Done. Your app is in:  dist\Pipeline\Pipeline.exe

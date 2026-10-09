@@ -156,14 +156,26 @@ def main() -> None:
     except Exception as exc:  # pragma: no cover - surfaced to the user
         print(f"Database setup failed: {exc}")
 
-    # Optional: create the first login from DEFAULT_USER_EMAIL/PASSWORD if both
-    # are set. Otherwise nothing is created and the first visit shows the setup
-    # page, where the owner picks their own email and password (no default
-    # account ships). Safe to run every time.
+    # First run: create the login with a random password. The packaged app has no
+    # console, so the password is saved to first_login.txt in the data folder and
+    # that file is opened in Notepad. Run "Pipeline.exe --reset-password" (or
+    # Pipeline-Reset-Password.bat) to get a new random password if it is forgotten.
+    note = data_dir / "first_login.txt"
+    before = note.stat().st_mtime if note.exists() else None
+    reset = "--reset-password" in sys.argv
     try:
-        call_command("create_default_user", verbosity=0)
+        call_command("create_default_user", reset=reset, verbosity=0)
     except Exception as exc:  # pragma: no cover
         print(f"Could not create the default user: {exc}")
+    after = note.stat().st_mtime if note.exists() else None
+    if after != before and hasattr(os, "startfile"):
+        try:
+            os.startfile(str(note))  # opens in Notepad
+        except OSError:
+            pass
+    if reset:
+        # Nothing else to do: the new password has been shown.
+        os._exit(0)
 
     # Register this install as an MCP server so Claude Desktop can read and
     # add contacts (see mcp_server/). Reconciles immediately and keeps retrying

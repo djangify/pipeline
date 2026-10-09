@@ -167,10 +167,24 @@ LOGOUT_REDIRECT_URL = "login"
 
 # Used by crm.management.commands.followup_reminders to build links in the
 # reminder email, and as DEFAULT_FROM_EMAIL's domain when nothing else is set.
+# The first login. Leave the password empty to get a random one (see
+# crm/management/commands/create_default_user.py).
+DEFAULT_USER_EMAIL = env("DEFAULT_USER_EMAIL", default="owner@example.com")
+DEFAULT_USER_PASSWORD = env("DEFAULT_USER_PASSWORD", default="")
+
 PRIMARY_DOMAIN = env("PRIMARY_DOMAIN", default="http://127.0.0.1:8000")
 FOLLOWUP_REMINDER_TO = env("FOLLOWUP_REMINDER_TO", default="")
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="pipeline@example.com")
 
+# Follow-up reminder emails. With no mail settings, reminders are printed to the
+# terminal instead of sent. To send real email, set EMAIL_BACKEND to
+# django.core.mail.backends.smtp.EmailBackend and fill in the EMAIL_HOST values
+# (see .env.example).
 EMAIL_BACKEND = env(
     "EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend"
 )
+EMAIL_HOST = env("EMAIL_HOST", default="localhost")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)

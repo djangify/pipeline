@@ -5,12 +5,13 @@ from django.contrib.auth.decorators import login_required
 from django.urls import include, path, re_path
 from django.views.static import serve
 
-from crm.accounts import FirstUserSetupView, PipelineLoginView
+from crm.accounts import FirstUserSetupView, PipelineLoginView, PipelinePasswordChangeView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("accounts/login/", PipelineLoginView.as_view(), name="login"),
     path("accounts/setup/", FirstUserSetupView.as_view(), name="setup"),
+    path("accounts/password/", PipelinePasswordChangeView.as_view(), name="password_change"),
     path(
         "accounts/logout/",
         auth_views.LogoutView.as_view(next_page="login"),

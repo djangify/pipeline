@@ -1,0 +1,77 @@
+HOW TO OPEN PIPELINE
+====================
+
+Follow these steps one at a time. It is easy.
+
+
+1. DOWNLOAD IT
+--------------
+
+Click the download link. You get a file called Pipeline.zip. It usually goes
+into your Downloads folder. Wait for it to finish.
+
+
+2. UNZIP IT
+-----------
+
+Right-click Pipeline.zip and choose Extract All, then click Extract. This
+makes a normal folder called Pipeline. Move the whole folder somewhere
+permanent, such as your Documents folder.
+
+
+3. OPEN THE APP
+---------------
+
+Open the Pipeline folder, find Pipeline.exe and double-click it.
+
+
+4. IF WINDOWS SHOWS A BLUE WARNING
+----------------------------------
+
+The first time, Windows may say "Windows protected your PC". This is normal
+for free apps that are not code signed.
+
+  - Click More info
+  - Then click Run anyway
+
+You only do this once.
+
+
+5. THE APP OPENS
+----------------
+
+A window opens. The first time it may take a few seconds to get ready.
+
+
+6. LOG IN
+---------
+
+The first time, a small Notepad window opens by itself. It shows your email
+and a random password made just for you.
+
+  - Type them into Pipeline and click Log in.
+  - Click Change password in the top right and choose a password of your own.
+  - Pipeline then deletes the first_login.txt file for you. If you still see
+    it, delete it. It is in the folder %USERPROFILE%\Pipeline Data (paste that
+    into the File Explorer address bar).
+
+Forgot your password? Close Pipeline, then double-click Pipeline-Reset-
+Password.bat in the same folder as Pipeline.exe. A new random password opens
+in Notepad. Log in, change it, and your contacts are not touched.
+
+Keep your password somewhere safe, for example a password manager or a
+notebook that stays at home. Your contacts are stored on this computer only,
+so nobody else can recover them for you.
+
+
+7. PIN IT SO IT IS EASY TO FIND NEXT TIME
+-----------------------------------------
+
+While Pipeline is open, look at the bar along the bottom of your screen.
+Right-click the Pipeline icon and choose Pin to taskbar. To add it to the
+Start menu, right-click Pipeline.exe, choose Show more options if you see it,
+then Pin to Start.
+
+Now you can open Pipeline any time with one click. Done!
+
+For the full guide, open Pipeline-Setup-Guide.pdf in this folder.

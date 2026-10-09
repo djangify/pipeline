@@ -10,7 +10,10 @@ import threading
 from django import forms
 from django.contrib.auth import get_user_model, login
 from django.contrib.auth.password_validation import validate_password
-from django.contrib.auth.views import LoginView
+from django.contrib.auth.views import LoginView, PasswordChangeView
+from django.contrib.messages.views import SuccessMessageMixin
+from django.conf import settings
+from django.urls import reverse_lazy
 from django.core.exceptions import ValidationError
 from django.shortcuts import redirect
 from django.views.generic import FormView
@@ -71,3 +74,18 @@ class FirstUserSetupView(FormView):
             )
         login(self.request, user)
         return redirect("crm:contact_list")
+
+
+class PipelinePasswordChangeView(SuccessMessageMixin, PasswordChangeView):
+    template_name = "registration/password_change.html"
+    success_url = reverse_lazy("crm:contact_list")
+    success_message = "Your password has been changed."
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        # The random first password is no longer valid; remove the file that holds it.
+        try:
+            (settings.DATA_DIR / "first_login.txt").unlink(missing_ok=True)
+        except OSError:
+            pass
+        return response
