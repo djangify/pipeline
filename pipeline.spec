@@ -50,6 +50,8 @@ for pkg in ["config", "crm", "research", "mcp_server"]:
 # .exe while working fine from source.
 datas += [
     ("templates", "templates"),
+    # Compiled Tailwind stylesheet; rebuild with `npm run build:css` first.
+    ("static", "static"),
     ("crm/templates", "crm/templates"),
     ("research/templates", "research/templates"),
 ]

@@ -5,6 +5,7 @@ db.sqlite3
 /media/
 /staticfiles/
 /pipelinevenv/
+node_modules/
 .claude/
 
 # Desktop .exe build output (packaged data lives in %USERPROFILE%\Pipeline Data)

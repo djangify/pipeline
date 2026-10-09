@@ -138,6 +138,8 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# The compiled stylesheet (static/css/output.css) lives here; see package.json.
+STATICFILES_DIRS = [BASE_DIR / "static"]
 
 # Desktop (PyWebView) mode: let WhiteNoise serve admin/DRF's static files
 # straight from the installed packages via the staticfiles finders, so the

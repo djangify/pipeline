@@ -1,0 +1,13 @@
+{
+  "name": "pipeline",
+  "private": true,
+  "description": "Builds the stylesheet (static/css/output.css). Only needed if you change the page styling.",
+  "scripts": {
+    "build:css": "tailwindcss -i static/src/input.css -o static/css/output.css --minify",
+    "watch:css": "tailwindcss -i static/src/input.css -o static/css/output.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.1.18",
+    "tailwindcss": "4.1.18"
+  }
+}

@@ -35,6 +35,29 @@ if errorlevel 1 (
 )
 
 :: -----------------------------------------------
+:: BUILD CSS (Tailwind) - compiles static\css\output.css so the .exe ships
+:: with current styles. Needs Node.js; without it the existing output.css
+:: (committed to the repo) is used as it is.
+:: -----------------------------------------------
+where npm >nul 2>&1
+if errorlevel 1 (
+    echo  npm not found - using the existing static\css\output.css.
+) else (
+    if not exist "node_modules\.bin\tailwindcss.cmd" (
+        echo  Installing Node dependencies...
+        call npm install --silent
+    )
+    echo  Building Tailwind CSS...
+    call npm run build:css
+    if errorlevel 1 (
+        color 0C
+        echo  ERROR: Tailwind CSS build failed.
+        pause
+        exit /b 1
+    )
+)
+
+:: -----------------------------------------------
 :: COLLECT STATIC FILES (bundled into the build)
 :: -----------------------------------------------
 echo  Collecting static files...

@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+/* Templates the compiler scans for class names. */
+@source "../../templates";
+@source "../../crm/templates";
+@source "../../research/templates";
+
+/* Tailwind 4 changed the default border colour to currentColor. Pipeline's
+   templates were written for the earlier default (light grey) and use plain
+   "border" and "border-t" classes, so keep that look. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+}

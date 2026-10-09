@@ -54,9 +54,10 @@ saying why they fit. Outreach is left to you.
   Microsoft WebView2 runtime (already present on current Windows 11 and most
   Windows 10 machines). `build_exe.bat` builds it and is Windows-only.
 - **Windows, macOS or Linux** for running from source in a browser.
-- An internet connection when you open the app: the page styling (Tailwind) is
-  loaded from `cdn.tailwindcss.com`. Your data never leaves your computer, but
-  without a connection the pages appear unstyled.
+- No internet connection is needed to run Pipeline. The page styling is a
+  compiled file shipped in the repo (`static/css/output.css`).
+- **Node.js** is only needed if you change the styling or build the `.exe`
+  (see Notes).
 
 ## Running it from source
 
@@ -123,8 +124,10 @@ database, are in [docs/USERS.md](docs/USERS.md).
 
 ## Notes
 
-- Tailwind is loaded from the CDN in `templates/base.html` — no node/npm
-  build step, deliberately kept simple for a single-user internal tool.
+- Styling uses Tailwind CSS 4, compiled into `static/css/output.css`, which is
+  committed, so running Pipeline needs no Node.js. After adding or changing
+  classes in a template, run `npm install` once and then `npm run build:css`.
+  `build_exe.bat` does this for you when Node.js is installed.
 - `Contact.business` and the research `business` fields are plain free text, so
   Pipeline has no built-in list of businesses. Type whatever you call yours;
   the Research page lists the businesses that have research saved.
