@@ -34,7 +34,7 @@ cloud service. Pipeline is free software under the [MIT licence](LICENSE).
 
 A **SearchProfile** (one per business name, edit in the admin or via Claude) holds
 who to look for and comma-separated signal phrases, including complaint/intent
-phrases for Reddit-style searches ("sick of paying fees", "alternative to X").
+phrases for Reddit-style searches ("sick of spreadsheets", "alternative to X").
 The server instructions tell Claude to read the profile first, search only
 public pages (never log into or automate LinkedIn/Facebook), check for
 duplicates, then add candidates as `status=new`, tagged `ai-sourced`, with notes
@@ -63,8 +63,8 @@ saying why they fit. Outreach is left to you.
 Windows (PowerShell or Command Prompt):
 
 ```bat
-git clone https://github.com/djangify/pipeline.git
-cd pipeline
+git clone <the repository URL>
+cd <the folder git created>
 python -m venv pipelinevenv
 pipelinevenv\Scripts\activate
 pip install -r requirements.txt
@@ -76,8 +76,8 @@ python manage.py runserver
 macOS / Linux:
 
 ```bash
-git clone https://github.com/djangify/pipeline.git
-cd pipeline
+git clone <the repository URL>
+cd <the folder git created>
 python3 -m venv pipelinevenv
 source pipelinevenv/bin/activate
 pip install -r requirements.txt   # pywin32 and the Windows-only parts are skipped automatically
@@ -102,9 +102,7 @@ Pipeline generates a random one on first run and keeps it in the data folder
 `%USERPROFILE%\Pipeline Data`, **not** AppData. Claude Desktop is a packaged
 Windows app and silently redirects AppData for anything it launches, so the
 app window and the Claude connector would otherwise each get their own
-database (research saved by Claude would never appear in the app). If an old
-`%LOCALAPPDATA%\Pipeline` install drifted apart from it, merge its research in
-with `python manage.py import_research_db <path to its db.sqlite3>`.
+database (research saved by Claude would never appear in the app).
 
 ## Logins: every user must be a superuser
 

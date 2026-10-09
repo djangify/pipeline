@@ -23,9 +23,7 @@ A user added in one does not exist in the other.
 
 The desktop app's data deliberately lives outside AppData. Claude Desktop
 redirects AppData for everything it launches (including the Pipeline
-connector), so data kept there splits into two databases. Older builds used
-`%LOCALAPPDATA%\Pipeline`; the first launch of a newer Pipeline.exe copies it
-across and leaves the old folder as a backup.
+connector), so data kept there splits into two databases.
 
 To run the commands below against the **desktop app's** database, set
 `PIPELINE_DATA_DIR` first (PowerShell, from the project folder):

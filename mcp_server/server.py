@@ -50,13 +50,13 @@ INSTRUCTIONS = (
     "1. Call get_search_profile for that business FIRST (list_search_profiles "
     "shows which exist). Its audience_description says who the ideal prospect "
     "is and its keywords are the signal phrases to search for, including "
-    "complaint and intent phrases such as 'sick of paying fees', "
+    "complaint and intent phrases such as 'sick of spreadsheets', "
     "'alternative to X' or 'account suspended'. Search against the owner's "
     "profile, not your own idea of the audience. If no profile exists, ask the "
     "owner to describe the audience (and offer to save it with "
     "create_search_profile) before searching.\n"
     "2. Use your own web search to find PUBLIC candidates: personal websites, "
-    "Gumroad / Stan Store / Payhip storefronts, public LinkedIn profile pages "
+    "business storefronts and directories, public LinkedIn profile pages "
     "that Google has indexed, and Reddit posts or comments matching the "
     "keywords. NEVER log into LinkedIn or Facebook, and never attempt any "
     "in-app browsing, scraping or automation of them. Only use what a search "
@@ -438,7 +438,7 @@ def create_contact(
 ) -> dict:
     """Add a contact to Pipeline. For prospects you found yourself: status='new',
     keep 'ai-sourced' in tags (the default; add others alongside it, e.g.
-    'ai-sourced, gumroad'), and use `notes` to explain WHY they are a
+    'ai-sourced, warm-lead'), and use `notes` to explain WHY they are a
     plausible fit: the matched keyword/signal, the source URL where you found
     them, and what they sell or said. Only record what you actually saw. For a
     contact the owner gives you themselves, set tags to whatever they want.
@@ -681,8 +681,8 @@ def create_purchase(
     made_purchase flag and revenue total automatically (revenue becomes the
     sum of all their logged purchases), and moves status to 'converted' if it
     wasn't already. amount: e.g. '49.00'. date: YYYY-MM-DD, defaults to today.
-    source: 'manual' or 'djangify' (use 'djangify' + external_order_id when
-    importing from a Djangify order, so a re-run doesn't create duplicates --
+    source: 'manual' or 'import' (use 'import' + external_order_id when
+    importing from another system's order, so a re-run doesn't create duplicates --
     this call is safe to retry with the same external_order_id, it will
     update the existing purchase instead of creating a second one)."""
     try:
@@ -966,7 +966,7 @@ def get_search_profile(business: str) -> dict:
     """Call this FIRST whenever the owner asks you to find prospects. Returns
     the business's audience_description (who to look for) and keywords (the
     signal phrases to search for, including complaint/intent phrases like
-    'sick of paying fees' or 'alternative to X' for Reddit-style searches).
+    'sick of spreadsheets' or 'alternative to X' for Reddit-style searches).
     business: the business name (free text; reuse a name already in use)."""
     try:
         p = _get_profile(business)
@@ -993,8 +993,8 @@ def create_search_profile(
 ) -> dict:
     """Save a new search profile for a business (one per business; use
     update_search_profile to change an existing one). keywords is a
-    comma-separated list of signal phrases, e.g. 'life coach, Gumroad, Stan
-    Store, download my guide, sick of paying fees, alternative to Kajabi'."""
+    comma-separated list of signal phrases, e.g. 'freelance designer, sick of
+    spreadsheets, looking for a better way to track clients, alternative to X'."""
     try:
         key = _business(business)
     except ValueError as exc:

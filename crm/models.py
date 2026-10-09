@@ -178,7 +178,7 @@ class Interaction(models.Model):
 def _recalc_contact_totals(contact):
     """Keep Contact.made_purchase/revenue as the sum of its logged purchases,
     so the dashboard totals stay correct whether a purchase was typed in
-    manually or synced in from Djangify."""
+    manually or imported from another system."""
     total = contact.purchases.aggregate(total=models.Sum("amount"))["total"] or 0
     contact.made_purchase = total > 0
     contact.revenue = total
@@ -188,7 +188,7 @@ def _recalc_contact_totals(contact):
 class Purchase(models.Model):
     SOURCE_CHOICES = [
         ("manual", "Manual entry"),
-        ("djangify", "Djangify sync"),
+        ("import", "Imported"),
     ]
 
     contact = models.ForeignKey(
@@ -203,7 +203,7 @@ class Purchase(models.Model):
         null=True,
         blank=True,
         unique=True,
-        help_text="Djangify order id, used to avoid importing the same order twice",
+        help_text="Order id from the system it was imported from, used to avoid importing the same order twice",
     )
     notes = models.CharField(max_length=255, blank=True)
 
@@ -285,8 +285,8 @@ class SearchProfile(models.Model):
     keywords = models.TextField(
         blank=True,
         help_text=(
-            "Comma-separated signal phrases, e.g. life coach, Gumroad, "
-            "sick of paying fees, alternative to Kajabi"
+            "Comma-separated signal phrases, e.g. freelance designer, "
+            "sick of spreadsheets, alternative to <competitor>"
         ),
     )
 

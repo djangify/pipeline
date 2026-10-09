@@ -26,7 +26,7 @@ set "PY=pipelinevenv\Scripts\python.exe"
 :: -----------------------------------------------
 echo  Installing dependencies...
 "%PY%" -m pip install -r requirements.txt --quiet --disable-pip-version-check
-"%PY%" -m pip install pyinstaller --quiet --disable-pip-version-check
+"%PY%" -m pip install pyinstaller==6.22.3 --quiet --disable-pip-version-check
 if errorlevel 1 (
     color 0C
     echo  ERROR: Failed to install dependencies.

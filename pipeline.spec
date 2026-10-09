@@ -73,7 +73,6 @@ hiddenimports += [
     "research.apps",
     "research.serializers",
     "research.admin",
-    "research.management.commands.import_research_db",
     "mcp_server.server",
     "mcp_server.desktop_connect",
     # mcp_launcher.py imports desktop lazily for the shared data dir/SECRET_KEY.

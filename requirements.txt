@@ -1,27 +1,24 @@
-adminita
+# Exact versions this project was developed and tested with (Python 3.13;
+# 3.10 or newer works). Bump them deliberately and re-test, rather than letting
+# a fresh install pull whatever is newest.
+adminita==0.2.1
 Django==5.2.18
-django-environ
-djangorestframework
-whitenoise
-pillow
-gunicorn
+django-environ==0.14.0
+djangorestframework==3.18.3
+whitenoise==6.12.0
+pillow==12.3.0
+gunicorn==26.2.0
 
 # Desktop app (native window + local production server for the bundled .exe)
-waitress
-pywebview
+waitress==3.0.2
+pywebview==6.2.1
 
 # MCP sidecar (Pipeline-mcp.exe / manage.py runmcp) so Claude Desktop can read
-# and add contacts. Same pin as Lead Generation Studio.
-mcp<2
+# and add contacts.
+mcp==1.30.0
+# Pulled in transitively by mcp; pinned directly so the version with the fixes
+# for the PyJWT 2.14.0 and earlier advisories is always the one installed.
+PyJWT==2.15.1
 # Pulled in transitively by mcp on Windows; pinned as a direct dependency so
 # the PyInstaller build always has the win32 shims it expects.
-pywin32; sys_platform == "win32"
-
-# scripts/apify_pipeline.py talks to the Apify API. Already pulled in
-# transitively by mcp, but pinned directly so the script doesn't silently
-# break if that stops being true.
-httpx
-
-# Transitive dependency of mcp. Floor set because PyJWT 2.14.0 and earlier have
-# known denial-of-service and key-handling advisories (fixed in 2.15.0).
-PyJWT>=2.15.0
+pywin32==312; sys_platform == "win32"
