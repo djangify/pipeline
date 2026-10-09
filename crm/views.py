@@ -6,11 +6,13 @@ from datetime import timedelta
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Count, Q, Sum
+from django.forms import modelform_factory
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.generic import (
     CreateView,
     DetailView,
@@ -35,6 +37,17 @@ FOLLOW_UP_GAP_DAYS = 2
 
 def _status_label(value):
     return dict(Contact.STATUS_CHOICES).get(value, value)
+
+
+def _safe_next_url(request, fallback):
+    """The posted "next" target, but only if it stays on this site. Anything
+    else (another host, a javascript: URL) falls back to a known-good page."""
+    target = request.POST.get("next") or ""
+    if target and url_has_allowed_host_and_scheme(
+        target, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    ):
+        return target
+    return fallback
 
 
 def _require_dead_reason(form):
@@ -310,10 +323,11 @@ class CheckInDoneView(LoginRequiredMixin, View):
         contact.next_touch_note = ""
         contact.save(update_fields=["next_touch_date", "next_touch_note"])
         log_activity(contact, "check_in_done", note or "Check-in done")
-        next_url = request.POST.get("next") or reverse(
-            "crm:contact_detail", kwargs={"pk": contact.pk}
+        return HttpResponseRedirect(
+            _safe_next_url(
+                request, reverse("crm:contact_detail", kwargs={"pk": contact.pk})
+            )
         )
-        return HttpResponseRedirect(next_url)
 
 
 class StageToggleView(LoginRequiredMixin, View):
@@ -345,10 +359,11 @@ class StageToggleView(LoginRequiredMixin, View):
                 contact, "stage_completed",
                 f"Follow-up {stage} marked {'done' if new_value else 'not done'}",
             )
-        next_url = request.POST.get("next") or reverse(
-            "crm:contact_detail", kwargs={"pk": contact.pk}
+        return HttpResponseRedirect(
+            _safe_next_url(
+                request, reverse("crm:contact_detail", kwargs={"pk": contact.pk})
+            )
         )
-        return HttpResponseRedirect(next_url)
 
 
 CSV_EXPORT_FIELDS = [
@@ -357,6 +372,20 @@ CSV_EXPORT_FIELDS = [
     "revenue", "next_touch_date", "next_touch_note", "dead_reason", "notes",
     "created_at",
 ]
+
+
+# Characters that make a spreadsheet read a cell as a formula (chr(9) is a tab,
+# chr(13) a carriage return).
+_FORMULA_PREFIXES = ("=", "+", "-", "@", chr(9), chr(13))
+
+
+def _csv_safe(value):
+    """Stop spreadsheet apps treating a text cell as a formula. Contact text can
+    come from scraped web pages, so a cell starting with one of the characters
+    above gets a leading apostrophe, which Excel and Sheets hide."""
+    if isinstance(value, str) and value.startswith(_FORMULA_PREFIXES):
+        return "'" + value
+    return value
 
 
 class ContactExportView(LoginRequiredMixin, View):
@@ -369,14 +398,40 @@ class ContactExportView(LoginRequiredMixin, View):
         writer = csv.writer(response)
         writer.writerow(CSV_EXPORT_FIELDS)
         for contact in Contact.objects.all():
-            writer.writerow([getattr(contact, field) for field in CSV_EXPORT_FIELDS])
+            writer.writerow(
+                [_csv_safe(getattr(contact, field)) for field in CSV_EXPORT_FIELDS]
+            )
         return response
+
+
+ContactImportForm = modelform_factory(Contact, fields=CONTACT_FIELDS)
+
+# Most rows only need a few columns, so anything the CSV leaves out takes the
+# model's own default (status "new", platform "linkedin", flags False).
+_IMPORT_DEFAULTS = {
+    f: Contact._meta.get_field(f).get_default()
+    for f in CONTACT_FIELDS
+    if Contact._meta.get_field(f).has_default()
+}
+_BOOL_IMPORT_FIELDS = ("joined_email_list", "made_purchase")
+MAX_IMPORT_ERRORS_SHOWN = 5
+
+
+def _match_choice(field_name, value):
+    """Let a CSV say "In conversation" or "LinkedIn" as well as the stored key."""
+    low = value.strip().lower()
+    for key, label in Contact._meta.get_field(field_name).choices:
+        if low in (str(key).lower(), str(label).lower()):
+            return key
+    return value
 
 
 class ContactImportView(LoginRequiredMixin, View):
     """Bulk-add contacts from a CSV. Headers are matched to Contact fields
     by exact name (case/spacing-insensitive) — no fuzzy matching, so an
-    unrecognized column is just ignored rather than guessed at."""
+    unrecognized column is just ignored rather than guessed at. Every row goes
+    through the same validation as the Add Contact form; rows that fail are
+    skipped and reported by row number, never half-saved."""
 
     template_name = "crm/contact_import.html"
 
@@ -400,7 +455,24 @@ class ContactImportView(LoginRequiredMixin, View):
         field_by_normalized_name.update({f: f for f in CONTACT_FIELDS})
 
         created, skipped = 0, 0
-        for row_num, row in enumerate(reader, start=2):
+        problems = []
+
+        def note_problem(row_num, who, detail):
+            if len(problems) < MAX_IMPORT_ERRORS_SHOWN:
+                problems.append(f"row {row_num} ({who}): {detail}" if who else f"row {row_num}: {detail}")
+
+        row_num = 1
+        while True:
+            row_num += 1
+            try:
+                row = next(reader)
+            except StopIteration:
+                break
+            except csv.Error as exc:
+                # e.g. a single cell larger than the csv module's field limit.
+                skipped += 1
+                note_problem(row_num, "", f"unreadable ({exc}); the rest of the file was not imported")
+                break
             data = {}
             for header, value in row.items():
                 if not header or value in (None, ""):
@@ -414,22 +486,36 @@ class ContactImportView(LoginRequiredMixin, View):
 
             if not data.get("name"):
                 skipped += 1
+                note_problem(row_num, "", "name is required")
                 continue
 
-            # Same rule as the form: dead is a decision, not a shrug.
-            if data.get("status") == "dead" and not data.get("dead_reason"):
-                skipped += 1
-                continue
-
-            for bool_field in ("joined_email_list", "made_purchase"):
+            for choice_field in ("status", "platform"):
+                if choice_field in data:
+                    data[choice_field] = _match_choice(choice_field, data[choice_field])
+            for bool_field in _BOOL_IMPORT_FIELDS:
                 if bool_field in data:
                     data[bool_field] = data[bool_field].lower() in ("true", "1", "yes", "y")
 
-            contact = Contact.objects.create(**data)
+            form = ContactImportForm({**_IMPORT_DEFAULTS, **data})
+            valid = form.is_valid() and _require_dead_reason(form)
+            if not valid:
+                skipped += 1
+                detail = "; ".join(
+                    f"{field}: {' '.join(errs)}" for field, errs in form.errors.items()
+                )
+                note_problem(row_num, data["name"], detail)
+                continue
+
+            contact = form.save()
             log_activity(contact, "contact_created", "Imported from CSV")
             created += 1
 
         messages.success(request, f"Imported {created} contact(s), skipped {skipped}.")
+        if problems:
+            messages.error(
+                request,
+                "Some rows could not be imported: " + " | ".join(problems),
+            )
         return redirect("crm:contact_list")
 
 

@@ -7,5 +7,5 @@ app_name = "research"
 
 urlpatterns = [
     path("", views.ResearchHomeView.as_view(), name="home"),
-    path("<str:business>/", views.ResearchBusinessView.as_view(), name="business_detail"),
+    path("<path:business>/", views.ResearchBusinessView.as_view(), name="business_detail"),
 ]

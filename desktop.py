@@ -188,9 +188,10 @@ def main() -> None:
     except Exception as exc:  # pragma: no cover - surfaced to the user
         print(f"Database setup failed: {exc}")
 
-    # Make sure a login exists on a fresh install (demo@example.com / demo123,
-    # or whatever DEFAULT_USER_EMAIL/PASSWORD are set to). Safe to run every
-    # time -- it does nothing if a user already exists.
+    # Optional: create the first login from DEFAULT_USER_EMAIL/PASSWORD if both
+    # are set. Otherwise nothing is created and the first visit shows the setup
+    # page, where the owner picks their own email and password (no default
+    # account ships). Safe to run every time.
     try:
         call_command("create_default_user", verbosity=0)
     except Exception as exc:  # pragma: no cover

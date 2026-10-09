@@ -72,10 +72,15 @@ pipelinevenv\Scripts\python manage.py shell -c "from django.contrib.auth import 
 Replace `name@example.com` with the login's username. Close Pipeline.exe first
 if you are changing the desktop app's database.
 
-## The default login
+## The first login
 
-On first launch the desktop app creates `admin@example.com` / `admin123` as a
-superuser, but only if the database has no users yet (see
-`crm/management/commands/create_default_user.py`). Set `DEFAULT_USER_EMAIL`
-and `DEFAULT_USER_PASSWORD` before first launch to change it. Change the
-password once you are in.
+There is no default account. The first time Pipeline opens with an empty
+database, the login page sends you to a setup page where you choose your own
+email and password. That account is created as a superuser. The setup page
+works only while there are no users at all, so it can never be used to add a
+second account.
+
+For a hands-off install you can instead set **both** `DEFAULT_USER_EMAIL` and
+`DEFAULT_USER_PASSWORD` before first launch (see `.env.example`); Pipeline then
+creates that superuser at startup (`crm/management/commands/create_default_user.py`)
+and skips the setup page. Change the password once you are in.

@@ -2,18 +2,6 @@
 from django.db import models
 from django.utils import timezone
 
-# Deliberately duplicated from crm.models.Contact.BUSINESS_CHOICES rather than
-# imported, so research stays dependency-free of crm the same way crm has no
-# FK into other apps. Keep the two lists in sync by hand.
-BUSINESS_CHOICES = [
-    ("djangify", "Djangify"),
-    ("inspirational_guidance", "Inspirational Guidance"),
-    ("self_talk_effect", "The Self-Talk Effect"),
-    ("todiane", "todiane.com"),
-    ("other", "Other"),
-]
-
-
 class CompetitorAd(models.Model):
     """A competitor ad pulled from an ad library (Meta/Google/LinkedIn), for
     studying angles and messaging. No one to contact here -- this is market
@@ -27,9 +15,8 @@ class CompetitorAd(models.Model):
     ]
 
     business = models.CharField(
-        max_length=30,
-        choices=BUSINESS_CHOICES,
-        help_text="Which of our businesses this competitor overlaps with",
+        max_length=100,
+        help_text="Which of your businesses or projects this competitor overlaps with",
     )
     platform = models.CharField(max_length=20, choices=PLATFORM_CHOICES, default="meta")
     competitor_name = models.CharField(max_length=150)
@@ -55,9 +42,8 @@ class Keyword(models.Model):
     rank for, and who currently owns that ranking."""
 
     business = models.CharField(
-        max_length=30,
-        choices=BUSINESS_CHOICES,
-        help_text="Which of our businesses this keyword research is for",
+        max_length=100,
+        help_text="Which of your businesses or projects this keyword research is for",
     )
     term = models.CharField(max_length=255)
     difficulty_score = models.PositiveIntegerField(
@@ -81,7 +67,7 @@ class Keyword(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.term} ({self.get_business_display()})"
+        return f"{self.term} ({self.business})"
 
 
 class PainTheme(models.Model):
@@ -90,9 +76,8 @@ class PainTheme(models.Model):
     across many people, not one person to contact."""
 
     business = models.CharField(
-        max_length=30,
-        choices=BUSINESS_CHOICES,
-        help_text="Which of our businesses this pain theme is relevant to",
+        max_length=100,
+        help_text="Which of your businesses or projects this pain theme is relevant to",
     )
     theme = models.CharField(max_length=255, help_text="Short label for the theme")
     description = models.TextField(blank=True, help_text="Synthesized summary of the theme")
@@ -120,4 +105,4 @@ class PainTheme(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.theme} ({self.get_business_display()})"
+        return f"{self.theme} ({self.business})"

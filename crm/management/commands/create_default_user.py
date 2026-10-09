@@ -1,12 +1,13 @@
 # crm/management/commands/create_default_user.py
 """
-Creates a default admin login on first run, if no users exist yet.
+Optionally creates the first login from environment variables, for hands-off
+installs. There is no built-in default account: with nothing set, this does
+nothing, and the first visit to Pipeline shows a setup page where the owner
+chooses their own email and password.
 
-Used by the packaged desktop app so a fresh install has something to log
-in with immediately. Safe to run every time -- it does nothing once any
-user already exists.
+Safe to run every time -- it does nothing once any user already exists.
 
-Configure via environment variables (see .env.example):
+Configure via environment variables (see .env.example), both required:
     DEFAULT_USER_EMAIL
     DEFAULT_USER_PASSWORD
 """
@@ -17,7 +18,7 @@ from django.core.management.base import BaseCommand
 
 
 class Command(BaseCommand):
-    help = "Creates a default superuser login if no users exist yet."
+    help = "Creates the first superuser from DEFAULT_USER_EMAIL/PASSWORD, if set and no users exist."
 
     def handle(self, *args, **options):
         User = get_user_model()
@@ -26,8 +27,14 @@ class Command(BaseCommand):
             self.stdout.write("A user already exists -- skipping default user creation.")
             return
 
-        email = os.environ.get("DEFAULT_USER_EMAIL", "admin@example.com")
-        password = os.environ.get("DEFAULT_USER_PASSWORD", "admin123")
+        email = os.environ.get("DEFAULT_USER_EMAIL", "").strip()
+        password = os.environ.get("DEFAULT_USER_PASSWORD", "")
+        if not email or not password:
+            self.stdout.write(
+                "DEFAULT_USER_EMAIL/DEFAULT_USER_PASSWORD not set -- the owner "
+                "creates their login on the setup page."
+            )
+            return
 
         User.objects.create_superuser(
             username=email,

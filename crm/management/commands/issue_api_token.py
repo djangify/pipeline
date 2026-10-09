@@ -6,7 +6,7 @@ Use this to get a token for a script to call Pipeline's REST API with:
     Authorization: Token <token>
 
 Usage:
-    python manage.py issue_api_token                  # uses DEFAULT_USER_EMAIL
+    python manage.py issue_api_token                  # uses DEFAULT_USER_EMAIL, if set
     python manage.py issue_api_token you@example.com
 """
 import os
@@ -24,14 +24,18 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         User = get_user_model()
-        email = options["email"] or os.environ.get("DEFAULT_USER_EMAIL", "admin@example.com")
+        email = options["email"] or os.environ.get("DEFAULT_USER_EMAIL", "")
+        if not email:
+            raise CommandError(
+                "Pass the user's email: python manage.py issue_api_token you@example.com"
+            )
 
         try:
             user = User.objects.get(username=email)
         except User.DoesNotExist:
             raise CommandError(
-                f"No user '{email}'. Pass an existing user's email, or run "
-                "create_default_user first."
+                f"No user '{email}'. Pass an existing user's email, or create "
+                "your login first by opening Pipeline."
             )
 
         token, _ = Token.objects.get_or_create(user=user)

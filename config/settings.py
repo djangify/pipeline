@@ -32,7 +32,28 @@ else:
 env = environ.Env(DEBUG=(bool, False))
 environ.Env.read_env(BASE_DIR / ".env")
 
-SECRET_KEY = env("SECRET_KEY", default="django-insecure-dev-key-change-in-production")
+
+
+def _load_secret_key():
+    """Use SECRET_KEY from the environment/.env when it holds a real value.
+    Otherwise generate a random one once and keep it in the data folder, so a
+    fresh install never runs on a published or placeholder key."""
+    key = env("SECRET_KEY", default="").strip()
+    if key and key != "change-me":
+        return key
+    key_file = DATA_DIR / "secret_key.txt"
+    if key_file.exists():
+        existing = key_file.read_text(encoding="utf-8").strip()
+        if existing:
+            return existing
+    from django.core.management.utils import get_random_secret_key
+
+    key = get_random_secret_key()
+    key_file.write_text(key, encoding="utf-8")
+    return key
+
+
+SECRET_KEY = _load_secret_key()
 DEBUG = env.bool("DEBUG", default=True)
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["127.0.0.1", "localhost"])
 

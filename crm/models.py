@@ -27,14 +27,6 @@ class Contact(models.Model):
         ("dead", "Dead / No interest"),
     ]
 
-    BUSINESS_CHOICES = [
-        ("djangify", "Djangify"),
-        ("inspirational_guidance", "Inspirational Guidance"),
-        ("self_talk_effect", "The Self-Talk Effect"),
-        ("todiane", "todiane.com"),
-        ("other", "Other"),
-    ]
-
     name = models.CharField(max_length=150)
     platform = models.CharField(
         max_length=20,
@@ -49,10 +41,9 @@ class Contact(models.Model):
     email = models.EmailField(blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="new")
     business = models.CharField(
-        max_length=30,
-        choices=BUSINESS_CHOICES,
+        max_length=100,
         blank=True,
-        help_text="Which business this contact relates to",
+        help_text="Which of your businesses or projects this contact relates to",
     )
     tags = models.CharField(
         max_length=255, blank=True, help_text="Comma-separated, e.g. coach, warm lead"
@@ -283,10 +274,9 @@ class SearchProfile(models.Model):
     """
 
     business = models.CharField(
-        max_length=30,
-        choices=Contact.BUSINESS_CHOICES,
+        max_length=100,
         unique=True,
-        help_text="Which business this profile searches for",
+        help_text="Which of your businesses or projects this profile searches for",
     )
     website = models.URLField(blank=True)
     audience_description = models.TextField(
@@ -307,7 +297,7 @@ class SearchProfile(models.Model):
         ordering = ["business"]
 
     def __str__(self):
-        return self.get_business_display()
+        return self.business
 
     @property
     def keyword_list(self):

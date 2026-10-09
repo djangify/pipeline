@@ -35,7 +35,6 @@ from django.utils import timezone
 from mcp.server.fastmcp import FastMCP
 
 from crm.models import Contact, FollowUpTemplate, Interaction, Purchase, SearchProfile
-from research.models import BUSINESS_CHOICES as RESEARCH_BUSINESS_CHOICES
 from research.models import CompetitorAd, Keyword, PainTheme
 
 # The server-level instructions Claude Desktop / Cowork reads at connect time.
@@ -113,13 +112,40 @@ INSTRUCTIONS = (
 mcp = FastMCP("pipeline", instructions=INSTRUCTIONS)
 
 AI_SOURCED_TAG = "ai-sourced"
+BUSINESS_MAX_LENGTH = 100
 
 
 # --- helpers ----------------------------------------------------------------
 
+def _business(value: str) -> str:
+    """Business names are free text (the owner's own businesses or projects), so
+    there is nothing to validate against. To stop 'Acme' and 'acme' becoming two
+    businesses, reuse the spelling already stored anywhere if one matches
+    case-insensitively."""
+    v = (value or "").strip()
+    if not v:
+        return ""
+    if len(v) > BUSINESS_MAX_LENGTH:
+        raise ValueError(f"business is too long (max {BUSINESS_MAX_LENGTH} characters).")
+    # casefold in Python rather than iexact: SQLite only ignores case for ASCII.
+    wanted = v.casefold()
+    for model in (Contact, SearchProfile, CompetitorAd, Keyword, PainTheme):
+        for existing in model.objects.order_by().values_list("business", flat=True).distinct():
+            if existing and existing.casefold() == wanted:
+                return existing
+    return v
+
+
+def _required_business(value: str) -> str:
+    key = _business(value)
+    if not key:
+        raise ValueError("business is required.")
+    return key
+
+
 def _resolve_choice(value: str, choices, field: str) -> str:
-    """Accept either a choice key ('self_talk_effect') or its label ('The
-    Self-Talk Effect'), case-insensitively. Raises ValueError listing the valid
+    """Accept either a choice key ('in_conversation') or its label ('In
+    conversation'), case-insensitively. Raises ValueError listing the valid
     keys otherwise, so the caller can correct itself in one step."""
     v = (value or "").strip()
     if not v:
@@ -225,8 +251,7 @@ def _profile_dict(p: SearchProfile) -> dict:
     return {
         "id": p.id,
         "business": p.business,
-        "business_label": p.get_business_display(),
-        "website": p.website,
+                "website": p.website,
         "audience_description": p.audience_description,
         "keywords": p.keyword_list,
         "updated_at": p.updated_at.isoformat(timespec="seconds"),
@@ -314,8 +339,7 @@ def list_contacts(
     limit: int = 50,
 ) -> dict:
     """List/search contacts, newest-updated first. `query` searches name,
-    handle, email, profile URL, tags and notes. Filter by business
-    (djangify / inspirational_guidance / self_talk_effect / todiane / other),
+    handle, email, profile URL, tags and notes. Filter by business (the business name),
     status (new / contacted / replied / in_conversation / converted / dead),
     tag (e.g. 'ai-sourced') and platform. For a duplicate check before adding
     someone, use find_contact instead."""
@@ -328,7 +352,7 @@ def list_contacts(
             | Q(tags__icontains=q) | Q(notes__icontains=q)
         )
     if business:
-        qs = qs.filter(business=_resolve_choice(business, Contact.BUSINESS_CHOICES, "business"))
+        qs = qs.filter(business=_business(business))
     if status:
         qs = qs.filter(status=_resolve_choice(status, Contact.STATUS_CHOICES, "status"))
     if platform:
@@ -419,8 +443,7 @@ def create_contact(
     them, and what they sell or said. Only record what you actually saw. For a
     contact the owner gives you themselves, set tags to whatever they want.
 
-    business: djangify / inspirational_guidance / self_talk_effect / todiane /
-    other. platform: where you found them (instagram, linkedin, x, facebook,
+    business: the business name (free text; reuse a name already in use). platform: where you found them (instagram, linkedin, x, facebook,
     tiktok, youtube, threads, reddit, email, referral, other). profile_url: the
     public page you found them on (personal site, storefront, profile).
     tags: comma-separated. follow_up_date: YYYY-MM-DD. revenue: e.g. '49.00'.
@@ -432,7 +455,7 @@ def create_contact(
     if not name:
         return {"error": "name is required."}
     try:
-        business_key = _resolve_choice(business, Contact.BUSINESS_CHOICES, "business")
+        business_key = _business(business)
         status_key = _resolve_choice(status or "new", Contact.STATUS_CHOICES, "status")
         platform_key = _resolve_choice(platform or "other", Contact.PLATFORM_CHOICES, "platform")
         fu_date = _parse_date(follow_up_date, "follow_up_date")
@@ -520,7 +543,7 @@ def update_contact(
             c.status = _resolve_choice(status, Contact.STATUS_CHOICES, "status")
             changed.append("status")
         if business:
-            c.business = _resolve_choice(business, Contact.BUSINESS_CHOICES, "business")
+            c.business = _business(business)
             changed.append("business")
         if follow_up_date:
             c.follow_up_date = (
@@ -588,7 +611,7 @@ def list_followups_due(days_ahead: int = 0, business: str = "", include_upcoming
         qs = qs.filter(follow_up_date__lte=today + datetime.timedelta(days=max(0, int(days_ahead or 0))))
     if business:
         try:
-            qs = qs.filter(business=_resolve_choice(business, Contact.BUSINESS_CHOICES, "business"))
+            qs = qs.filter(business=_business(business))
         except ValueError as exc:
             return {"error": str(exc)}
     rows = []
@@ -614,7 +637,7 @@ def list_checkins_due(days_ahead: int = 0, business: str = "", include_upcoming:
         qs = qs.filter(next_touch_date__lte=today + datetime.timedelta(days=max(0, int(days_ahead or 0))))
     if business:
         try:
-            qs = qs.filter(business=_resolve_choice(business, Contact.BUSINESS_CHOICES, "business"))
+            qs = qs.filter(business=_business(business))
         except ValueError as exc:
             return {"error": str(exc)}
     rows = []
@@ -630,14 +653,13 @@ def list_checkins_due(days_ahead: int = 0, business: str = "", include_upcoming:
 @mcp.tool()
 def list_purchases(contact_id: int | None = None, business: str = "", limit: int = 50) -> dict:
     """List logged purchases, newest first. Filter by contact_id, or by
-    business (djangify / inspirational_guidance / self_talk_effect / todiane /
-    other) to see purchases across everyone tied to that business."""
+    business (the business name) to see purchases across everyone tied to that business."""
     qs = Purchase.objects.select_related("contact").all()
     if contact_id is not None:
         qs = qs.filter(contact_id=contact_id)
     if business:
         try:
-            key = _resolve_choice(business, Contact.BUSINESS_CHOICES, "business")
+            key = _business(business)
         except ValueError as exc:
             return {"error": str(exc)}
         qs = qs.filter(contact__business=key)
@@ -823,7 +845,7 @@ def list_interactions(contact_id: int | None = None, business: str = "", limit: 
         qs = qs.filter(contact_id=contact_id)
     if business:
         try:
-            key = _resolve_choice(business, Contact.BUSINESS_CHOICES, "business")
+            key = _business(business)
         except ValueError as exc:
             return {"error": str(exc)}
         qs = qs.filter(contact__business=key)
@@ -928,7 +950,7 @@ def delete_interaction(interaction_id: int, confirm: bool = False) -> dict:
 # --- search profiles ------------------------------------------------------------
 
 def _get_profile(business: str) -> SearchProfile | None:
-    key = _resolve_choice(business, Contact.BUSINESS_CHOICES, "business")
+    key = _business(business)
     return SearchProfile.objects.filter(business=key).first()
 
 
@@ -945,8 +967,7 @@ def get_search_profile(business: str) -> dict:
     the business's audience_description (who to look for) and keywords (the
     signal phrases to search for, including complaint/intent phrases like
     'sick of paying fees' or 'alternative to X' for Reddit-style searches).
-    business: djangify / inspirational_guidance / self_talk_effect / todiane /
-    other (or its display name)."""
+    business: the business name (free text; reuse a name already in use)."""
     try:
         p = _get_profile(business)
     except ValueError as exc:
@@ -975,7 +996,7 @@ def create_search_profile(
     comma-separated list of signal phrases, e.g. 'life coach, Gumroad, Stan
     Store, download my guide, sick of paying fees, alternative to Kajabi'."""
     try:
-        key = _resolve_choice(business, Contact.BUSINESS_CHOICES, "business")
+        key = _business(business)
     except ValueError as exc:
         return {"error": str(exc)}
     if not key:
@@ -1100,12 +1121,11 @@ def _pain_theme_dict(t: PainTheme) -> dict:
 @mcp.tool()
 def list_competitor_ads(business: str = "", competitor_name: str = "", limit: int = 50) -> dict:
     """List competitor ads pulled from ad libraries (Meta/Google/LinkedIn),
-    newest-pulled first. Filter by business (djangify / inspirational_guidance
-    / self_talk_effect / todiane / other) and/or competitor_name."""
+    newest-pulled first. Filter by business (the business name) and/or competitor_name."""
     qs = CompetitorAd.objects.all()
     try:
         if business:
-            qs = qs.filter(business=_resolve_choice(business, RESEARCH_BUSINESS_CHOICES, "business"))
+            qs = qs.filter(business=_business(business))
     except ValueError as exc:
         return {"error": str(exc)}
     if competitor_name.strip():
@@ -1129,8 +1149,7 @@ def create_competitor_ad(
     allow_duplicate: bool = False,
 ) -> dict:
     """Record a competitor ad (market research, not a lead -- there is no one
-    to contact here). business: djangify / inspirational_guidance /
-    self_talk_effect / todiane / other. platform: meta / google / linkedin /
+    to contact here). business: the business name (free text; reuse a name already in use). platform: meta / google / linkedin /
     other. angle is the messaging angle/positioning this ad uses -- required.
     date_pulled: YYYY-MM-DD, defaults to today.
 
@@ -1141,7 +1160,7 @@ def create_competitor_ad(
     if not competitor_name or not angle:
         return {"error": "competitor_name and angle are required."}
     try:
-        business_key = _resolve_choice(business, RESEARCH_BUSINESS_CHOICES, "business")
+        business_key = _business(business)
         platform_key = _resolve_choice(platform or "other", CompetitorAd.PLATFORM_CHOICES, "platform")
         pulled = _parse_date(date_pulled, "date_pulled") if date_pulled else timezone.localdate()
     except ValueError as exc:
@@ -1211,7 +1230,7 @@ def update_competitor_ad(
     changed = []
     try:
         if business:
-            a.business = _resolve_choice(business, RESEARCH_BUSINESS_CHOICES, "business")
+            a.business = _business(business)
             changed.append("business")
         if platform:
             a.platform = _resolve_choice(platform, CompetitorAd.PLATFORM_CHOICES, "platform")
@@ -1270,12 +1289,11 @@ def delete_competitor_ad(ad_id: int, confirm: bool = False) -> dict:
 @mcp.tool()
 def list_keywords(business: str = "", limit: int = 100) -> dict:
     """List keyword research, grouped by business then term. Filter by
-    business (djangify / inspirational_guidance / self_talk_effect / todiane /
-    other)."""
+    business (the business name)."""
     qs = Keyword.objects.all()
     try:
         if business:
-            qs = qs.filter(business=_resolve_choice(business, RESEARCH_BUSINESS_CHOICES, "business"))
+            qs = qs.filter(business=_business(business))
     except ValueError as exc:
         return {"error": str(exc)}
     total = qs.count()
@@ -1296,13 +1314,12 @@ def upsert_keyword(
     business+term on a re-run -- updates the existing row instead of
     duplicating it. Only fields you pass are changed; leave difficulty_score /
     search_volume / top_ranking_domain out to leave them as they are.
-    business: djangify / inspirational_guidance / self_talk_effect / todiane /
-    other. difficulty_score: 0-100."""
+    business: the business name (free text; reuse a name already in use). difficulty_score: 0-100."""
     term = (term or "").strip()
     if not term:
         return {"error": "term is required."}
     try:
-        business_key = _resolve_choice(business, RESEARCH_BUSINESS_CHOICES, "business")
+        business_key = _required_business(business)
     except ValueError as exc:
         return {"error": str(exc)}
 
@@ -1354,12 +1371,11 @@ def delete_keyword(keyword_id: int, confirm: bool = False) -> dict:
 @mcp.tool()
 def list_pain_themes(business: str = "", limit: int = 50) -> dict:
     """List aggregated pain/complaint themes, most-supported first. Filter by
-    business (djangify / inspirational_guidance / self_talk_effect / todiane /
-    other)."""
+    business (the business name)."""
     qs = PainTheme.objects.all()
     try:
         if business:
-            qs = qs.filter(business=_resolve_choice(business, RESEARCH_BUSINESS_CHOICES, "business"))
+            qs = qs.filter(business=_business(business))
     except ValueError as exc:
         return {"error": str(exc)}
     total = qs.count()
@@ -1382,13 +1398,13 @@ def upsert_pain_theme(
     Safe to call again for the same business+theme on a re-run -- updates the
     existing row instead of duplicating it. quote_count REPLACES the count;
     add_quote_count adds to whatever is already there instead (use this on a
-    re-run so counts accumulate rather than reset). business: djangify /
-    inspirational_guidance / self_talk_effect / todiane / other."""
+    re-run so counts accumulate rather than reset). business: the business
+    name (free text; reuse a name already in use)."""
     theme = (theme or "").strip()
     if not theme:
         return {"error": "theme is required."}
     try:
-        business_key = _resolve_choice(business, RESEARCH_BUSINESS_CHOICES, "business")
+        business_key = _required_business(business)
     except ValueError as exc:
         return {"error": str(exc)}
 

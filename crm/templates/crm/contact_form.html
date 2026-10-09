@@ -65,12 +65,8 @@
 
                 <div>
                     <label for="{{ form.business.id_for_label }}" class="block text-sm font-medium text-gray-700">Business</label>
-                    <select name="{{ form.business.name }}" id="{{ form.business.id_for_label }}" class="mt-1 block w-full bg-white border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                        {% for value, display in form.fields.business.choices %}
-                        <option value="{{ value }}" {% if form.business.value == value %}selected{% endif %}>{{ display }}</option>
-                        {% endfor %}
-                    </select>
-                    <p class="text-xs text-gray-500 mt-1">Which business you spoke to them about.</p>
+                    <input type="text" name="{{ form.business.name }}" id="{{ form.business.id_for_label }}" value="{{ form.business.value|default:'' }}" maxlength="100" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                    <p class="text-xs text-gray-500 mt-1">Which of your businesses or projects you spoke to them about.</p>
                 </div>
 
                 <div>

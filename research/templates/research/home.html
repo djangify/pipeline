@@ -7,7 +7,7 @@
     <div class="flex justify-between items-center mb-6">
         <div>
             <h1 class="text-3xl font-bold text-gray-800">Market Research</h1>
-            <p class="text-sm text-gray-500 mt-1">Competitor ads, keyword opportunities and pain themes, per business.</p>
+            <p class="text-sm text-gray-500 mt-1">Competitor ads, keyword opportunities and pain themes, per business. A business appears here once research is saved for it.</p>
         </div>
     </div>
 
@@ -30,6 +30,8 @@
                 </div>
             </div>
         </a>
+        {% empty %}
+        <p class="text-gray-500">No research saved yet. Ask Claude to save pain themes, competitor ads or keywords, and they will show up here by business.</p>
         {% endfor %}
     </div>
 </div>

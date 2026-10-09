@@ -4,16 +4,14 @@ A small, standalone leads CRM. Log who you've talked to on LinkedIn (or any
 other channel), track them through a status pipeline, and never lose track of
 a follow-up.
 
-Built by pulling the `crm` app out of the original Tracker/LGS lineage — it
-was deliberately removed from [Lead Generation Studio](../ProductTracker)
-on 2026-08-09 to keep that tool focused on content, not contacts. Pipeline
-gives that CRM its own home instead of bolting it back on.
+Everything stays on your own computer: one SQLite database, no account, no
+cloud service. Pipeline is free software under the [MIT licence](LICENSE).
 
 ## What it does
 
 - **Contacts** — name, platform found on, social handle/profile link, email,
   a status pipeline (new → contacted → replied → in conversation → converted
-  / dead), which business they relate to, tags, notes.
+  / dead), which of your businesses or projects they relate to (free text), tags, notes.
 - **Follow-ups** — 3 dated follow-up stages per contact; ticking a stage
   auto-schedules the next one 2 days out. A dedicated Follow-ups view lists
   everything due or overdue.
@@ -29,13 +27,12 @@ gives that CRM its own home instead of bolting it back on.
 
 ## Claude Desktop connector (MCP)
 
-`mcp_server/` exposes Pipeline to Claude Desktop over stdio, same architecture
-as Lead Generation Studio's connector. Tools: `list_contacts`, `find_contact`
+`mcp_server/` exposes Pipeline to Claude Desktop over stdio (optional). Tools: `list_contacts`, `find_contact`
 (dedup lookup by name / website / email / handle), `get_contact`,
 `create_contact` (refuses exact duplicates), `update_contact`,
 `list_followups_due`, and `list/get/create/update_search_profile`.
 
-A **SearchProfile** (one per business, edit in the admin or via Claude) holds
+A **SearchProfile** (one per business name, edit in the admin or via Claude) holds
 who to look for and comma-separated signal phrases, including complaint/intent
 phrases for Reddit-style searches ("sick of paying fees", "alternative to X").
 The server instructions tell Claude to read the profile first, search only
@@ -50,19 +47,54 @@ saying why they fit. Outreach is left to you.
 - **From source:** `python manage.py runmcp` (or `python mcp_launcher.py`)
   runs the server against the dev database in `data/`.
 
-## Running it
+## What you need
 
-```bash
+- **Python 3.10 or newer** (3.13 is what it is developed on) and `git`.
+- **Windows 10/11** for the desktop app (`Pipeline.exe`), which also needs the
+  Microsoft WebView2 runtime (already present on current Windows 11 and most
+  Windows 10 machines). `build_exe.bat` builds it and is Windows-only.
+- **Windows, macOS or Linux** for running from source in a browser.
+- An internet connection when you open the app: the page styling (Tailwind) is
+  loaded from `cdn.tailwindcss.com`. Your data never leaves your computer, but
+  without a connection the pages appear unstyled.
+
+## Running it from source
+
+Windows (PowerShell or Command Prompt):
+
+```bat
+git clone https://github.com/djangify/pipeline.git
+cd pipeline
 python -m venv pipelinevenv
 pipelinevenv\Scripts\activate
 pip install -r requirements.txt
 copy .env.example .env
 python manage.py migrate
-python manage.py createsuperuser
 python manage.py runserver
 ```
 
-Then visit `http://127.0.0.1:8000/` and log in.
+macOS / Linux:
+
+```bash
+git clone https://github.com/djangify/pipeline.git
+cd pipeline
+python3 -m venv pipelinevenv
+source pipelinevenv/bin/activate
+pip install -r requirements.txt   # pywin32 and the Windows-only parts are skipped automatically
+cp .env.example .env
+python manage.py migrate
+python manage.py runserver
+```
+
+Then visit `http://127.0.0.1:8000/`. The first time, Pipeline shows a setup
+page where you choose your own email and password. There is no default login.
+
+If port 8000 is already in use, run `python manage.py runserver 8001` and visit
+that port instead.
+
+You do not need to edit `.env` to get going. `SECRET_KEY` can stay blank:
+Pipeline generates a random one on first run and keeps it in the data folder
+(`data/secret_key.txt` from source). Leave `DEBUG=True` for local use.
 
 ## Where the desktop app keeps its data
 
@@ -81,20 +113,27 @@ single-owner tool and Django admin (the Admin link, search profiles, raw
 research data) only lets in staff users. A normal user gets bounced to the
 admin login page, which looks exactly like being logged out.
 
-- **From the command line:** always use `python manage.py createsuperuser`,
-  never `create_user`.
+- **First login:** the setup page creates it for you, already a superuser.
+- **More users from the command line:** always use
+  `python manage.py createsuperuser`, never `create_user`.
 - **In the admin (Admin → Users → Add user):** after saving, tick both
   **Staff status** and **Superuser status** on the next screen, then save again.
 
-The packaged app creates `admin@example.com` / `admin123` as a superuser on
-first launch. Full steps, including how to upgrade an existing login and how
-to run these commands against the packaged app's database, are in
-[docs/USERS.md](docs/USERS.md).
+There is no built-in default account. Full steps, including how to upgrade an
+existing login and how to run these commands against the packaged app's
+database, are in [docs/USERS.md](docs/USERS.md).
 
 ## Notes
 
 - Tailwind is loaded from the CDN in `templates/base.html` — no node/npm
   build step, deliberately kept simple for a single-user internal tool.
-- `Contact.business` is a plain choice field (Djangify / Inspirational
-  Guidance / The Self-Talk Effect / todiane.com / Other) rather than a
-  foreign key, so this app has zero dependency on any other project.
+- `Contact.business` and the research `business` fields are plain free text, so
+  Pipeline has no built-in list of businesses. Type whatever you call yours;
+  the Research page lists the businesses that have research saved.
+- Uploaded screenshots are served only to a logged-in user.
+- CSV import checks every row like the Add Contact form does. Rows that fail
+  are skipped and the first few problems are shown by row number.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
